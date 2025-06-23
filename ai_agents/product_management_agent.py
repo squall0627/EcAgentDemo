@@ -1,3 +1,4 @@
+import os
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain.memory import ConversationBufferMemory
@@ -14,6 +15,52 @@ from ai_agents.tools.product_tools import (
     UnpublishProductsTool
 )
 
+# Langfuse 导入 - 多种兼容方式
+LANGFUSE_AVAILABLE = False
+langfuse_context = None
+observe = None
+Langfuse = None
+
+# 尝试不同的导入方式来兼容不同版本
+try:
+    # 方式1: Langfuse 3.0+ 推荐方式
+    from langfuse import observe, Langfuse
+    from langfuse.decorators import langfuse_context
+    LANGFUSE_AVAILABLE = True
+    print("✅ Langfuse 3.0+ successfully imported")
+except ImportError:
+    try:
+        # 方式2: 尝试直接从 langfuse 导入
+        from langfuse import observe, Langfuse
+        import langfuse as langfuse_module
+        langfuse_context = getattr(langfuse_module, 'langfuse_context', None)
+        LANGFUSE_AVAILABLE = True
+        print("✅ Langfuse successfully imported (alternative method)")
+    except ImportError:
+        try:
+            # 方式3: 尝试传统导入方式
+            from langfuse.callback import CallbackHandler
+            from langfuse import Langfuse
+            LANGFUSE_AVAILABLE = True
+            print("✅ Langfuse callback imported (fallback method)")
+            
+            # 创建一个简单的装饰器
+            def observe(name=None, **kwargs):
+                def decorator(func):
+                    def wrapper(*args, **kwargs_inner):
+                        return func(*args, **kwargs_inner)
+                    return wrapper
+                return decorator
+        except ImportError as e:
+            print(f"❌ Langfuse not available: {e}")
+            LANGFUSE_AVAILABLE = False
+            
+            # 创建空装饰器
+            def observe(name=None, **kwargs):
+                def decorator(func):
+                    return func
+                return decorator
+
 # サンプルコマンド
 EXAMPLE_COMMANDS = [
     "コーヒー商品を検索してください",
@@ -27,14 +74,28 @@ EXAMPLE_COMMANDS = [
 ]
 
 class ProductManagementAgent:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, use_langfuse: bool = True):
         """商品管理エージェントを初期化"""
         self.api_key = api_key
+        self.use_langfuse = use_langfuse and LANGFUSE_AVAILABLE
+        
+        # Langfuse初期化
+        if self.use_langfuse and Langfuse:
+            try:
+                self.langfuse = Langfuse(
+                    public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
+                    secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
+                    host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+                )
+                print("✅ Langfuse client initialized successfully")
+            except Exception as e:
+                print(f"❌ Failed to initialize Langfuse: {e}")
+                self.use_langfuse = False
         
         # OpenAI LLMを初期化
         self.llm = ChatOpenAI(
             openai_api_key=api_key,
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             temperature=0.1
         )
         
@@ -131,14 +192,76 @@ class ProductManagementAgent:
             return_intermediate_steps=True
         )
 
-    def process_command(self, command: str) -> str:
-        """自然言語コマンドを処理"""
+    @observe(name="process_command")
+    def process_command(self, command: str, session_id: str = None, user_id: str = None) -> str:
+        """自然言語コマンドを処理 (Langfuse対応)"""
         try:
+            # Langfuse context更新
+            if self.use_langfuse and langfuse_context:
+                try:
+                    langfuse_context.update_current_observation(
+                        input=command,
+                        metadata={
+                            "session_id": session_id,
+                            "user_id": user_id,
+                            "agent_type": "product_management"
+                        }
+                    )
+                except Exception as e:
+                    print(f"Langfuse context update failed: {e}")
+            
+            # エージェント実行
             response = self.agent_executor.invoke({"input": command})
-            return response["output"]
+            output = response["output"]
+            
+            # Langfuse context更新
+            if self.use_langfuse and langfuse_context:
+                try:
+                    langfuse_context.update_current_observation(
+                        output=output,
+                        metadata={
+                            "intermediate_steps": len(response.get("intermediate_steps", [])),
+                            "total_tokens": self._estimate_tokens(command, output)
+                        }
+                    )
+                except Exception as e:
+                    print(f"Langfuse output update failed: {e}")
+            
+            return output
+            
         except Exception as e:
-            return f"エラーが発生しました: {str(e)}"
+            error_msg = f"エラーが発生しました: {str(e)}"
+            
+            if self.use_langfuse and langfuse_context:
+                try:
+                    langfuse_context.update_current_observation(
+                        output=error_msg,
+                        level="ERROR",
+                        status_message=str(e)
+                    )
+                except Exception:
+                    pass
+            
+            return error_msg
+
+    def _estimate_tokens(self, input_text: str, output_text: str) -> int:
+        """トークン数を概算"""
+        return len(input_text.split()) + len(output_text.split())
 
     def get_conversation_history(self) -> list:
         """対話履歴を取得"""
         return self.memory.chat_memory.messages
+
+    def create_trace(self, name: str, session_id: str = None, user_id: str = None):
+        """新しいトレースを作成 (Langfuse対応)"""
+        if self.use_langfuse and hasattr(self, 'langfuse'):
+            try:
+                return self.langfuse.trace(
+                    name=name,
+                    session_id=session_id,
+                    user_id=user_id
+                )
+            except Exception as e:
+                print(f"Failed to create trace: {e}")
+                return None
+        return None

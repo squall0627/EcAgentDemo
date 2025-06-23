@@ -6,6 +6,7 @@ python-multipart==0.0.6
 langchain
 langchain-openai
 langchain-community
+langgraph
 openai
 requests==2.31.0
 pydantic

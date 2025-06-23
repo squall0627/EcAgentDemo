@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ai_agents.product_management_agent import ProductManagementLangGraphAgent, EXAMPLE_COMMANDS
+from ai_agents.product_management_agent import ProductManagementAgent, EXAMPLE_COMMANDS
 from typing import Optional
 import os
 import json
@@ -16,7 +16,7 @@ def get_agent():
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise HTTPException(status_code=500, detail="OpenAI APIキーが設定されていません")
-        agent_instance = ProductManagementLangGraphAgent(api_key)
+        agent_instance = ProductManagementAgent(api_key)
     return agent_instance
 
 class ChatRequest(BaseModel):

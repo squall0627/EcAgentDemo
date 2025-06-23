@@ -1,14 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 
 router = APIRouter()
 
 class HtmlGenerateRequest(BaseModel):
     page_type: str
-    data: Dict[str, Any]
+    data: Optional[Dict[str, Any]]
 
 class HtmlGenerateResponse(BaseModel):
     success: bool

@@ -2,122 +2,100 @@ import os
 import json
 from typing import TypedDict, Annotated, List, Dict, Any, Optional
 
-from langfuse import Langfuse
+from dotenv import load_dotenv
+from langchain_ollama import ChatOllama
+from langgraph.constants import START
 from typing_extensions import Literal
+from langfuse import Langfuse
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import ToolNode, tools_condition
 from ai_agents.tools.product_tools import (
-    SearchProductsTool,
+    # SearchProductsTool,
     UpdateStockTool,
     UpdateCategoryTool,
     BulkUpdateStockTool,
     ValidateProductTool,
     GenerateHtmlTool,
     PublishProductsTool,
-    UnpublishProductsTool
+    UnpublishProductsTool, search_products_tool
 )
 
-# Langfuse V3
+load_dotenv()
+
+# Langfuse V3 インポート
 LANGFUSE_AVAILABLE = False
 
 try:
-    # Langfuse V3 最新的CallbackHandler导入方式
     from langfuse.langchain import CallbackHandler
     from langfuse import observe
-
     LANGFUSE_AVAILABLE = True
-    print("✅ Langfuse V3 CallbackHandler successfully imported from langfuse.langchain")
+    print("✅ Langfuse V3 CallbackHandler正常にインポートされました")
 except ImportError as e:
-    print(f"❌ Langfuse V3 CallbackHandler not available: {e}")
-    # # 创建空的CallbackHandler和observe装饰器
-    # class MockCallbackHandler:
-    #     def __init__(self, *args, **kwargs):
-    #         pass
-    #
-    # CallbackHandler = MockCallbackHandler
-    #
-    # def observe(name=None, **kwargs):
-    #     def decorator(func):
-    #         return func
-    #     return decorator
-    
+    print(f"❌ Langfuse V3 CallbackHandlerが利用できません: {e}")
     LANGFUSE_AVAILABLE = False
 
-# サンプルコマンド
-EXAMPLE_COMMANDS = [
-    "コーヒー商品を検索してください",
-    "在庫が10未満の商品を表示してください", 
-    "JANコード123456789の在庫を50に設定してください",
-    "商品のカテゴリーを飲料に変更してください",
-    "在庫切れ商品を自動補充してください",
-    "全ての商品の在庫を100に設定してください",
-    "商品を棚上げしてください",
-    "商品を棚下げしてください"
-]
-
-# LangGraph状態定義
+# LangGraph状態定義 - より柔軟な状態管理
 class AgentState(TypedDict):
     messages: Annotated[List[HumanMessage | AIMessage | SystemMessage], add_messages]
-    current_step: str
     user_input: str
-    search_results: Optional[List[Dict]]
-    validation_results: Optional[Dict]
-    selected_products: Optional[List[Dict]]
-    action_type: Optional[str]
+    # intent: Optional[str]  # ユーザー意図：検索、在庫更新、カテゴリー更新、棚上げ、棚下げなど
+    # target_products: Optional[List[Dict]]  # 対象商品
+    # action_params: Optional[Dict]  # アクションパラメータ（在庫数量、新カテゴリーなど）
+    # execution_result: Optional[Dict]  # 実行結果
     html_content: Optional[str]
     error_message: Optional[str]
-    next_actions: Optional[List[str]]
+    next_actions: Optional[str]  # 次のステップ提案
     session_id: Optional[str]
     user_id: Optional[str]
-    intermediate_steps: List[Dict]
+    # workflow_path: List[str]  # 実行パスの記録
 
-class ProductManagementLangGraphAgent:
+class ProductManagementAgent:
     def __init__(self, api_key: str, use_langfuse: bool = True):
-        """LangGraphベースの商品管理エージェントを初期化"""
+        """柔軟な商品管理エージェント - 任意のノードから実行開始をサポート"""
         self.api_key = api_key
         self.use_langfuse = use_langfuse and LANGFUSE_AVAILABLE
         
-        # Langfuse V3 CallbackHandler初期化
+        # Langfuse V3 初期化
         self.langfuse_handler = None
         if self.use_langfuse:
             try:
-                # 環境変数チェック
                 public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
                 secret_key = os.getenv("LANGFUSE_SECRET_KEY")
                 host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-
-                if not public_key or not secret_key:
-                    print("⚠️  Langfuse credentials not found in environment variables")
-                    self.use_langfuse = False
-                else:
-                    # Langfuse V3 CallbackHandlerを初期化
+                if public_key and secret_key:
                     Langfuse(
                         public_key=public_key,
                         secret_key=secret_key,
-                        host=host
+                        host=host,
                     )
                     self.langfuse_handler = CallbackHandler()
-                    print("✅ Langfuse V3 CallbackHandler initialized successfully")
-                    
+                    print("✅ Langfuse V3が正常に初期化されました")
+                else:
+                    print("⚠️  Langfuse認証情報が見つかりません")
+                    self.use_langfuse = False
             except Exception as e:
-                print(f"❌ Failed to initialize Langfuse V3 CallbackHandler: {e}")
+                print(f"❌ Langfuse初期化に失敗しました: {e}")
                 self.use_langfuse = False
-        else:
-            print("💡 Running without Langfuse tracing")
-        
-        # OpenAI LLMを初期化
+
+        # LLM初期化
         self.llm = ChatOpenAI(
             openai_api_key=api_key,
             model="gpt-4o-mini",
             temperature=0.1
         )
+
+        # self.llm = ChatOllama(
+        #     model="qwen2.5-coder:32b",  # or any other model you have installed in Ollama
+        #     base_url="http://localhost:11434",  # Default Ollama URL
+        #     temperature=0.7,
+        # )
         
-        # ツールを初期化
+        # ツール初期化
         self.tools = [
-            SearchProductsTool(),
+            search_products_tool,
             UpdateStockTool(),
             UpdateCategoryTool(),
             BulkUpdateStockTool(),
@@ -127,541 +105,576 @@ class ProductManagementLangGraphAgent:
             UnpublishProductsTool()
         ]
         
-        # ツールをLLMにバインド
-        self.llm_with_tools = self.llm.bind_tools(self.tools)
+        # ツールマッピングを作成
+        self.tool_map = {tool.name: tool for tool in self.tools}
         
-        # ツールノードを作成
+        # ツール付きLLM
+        self.llm_with_tools = self.llm.bind_tools(self.tools)
         self.tool_node = ToolNode(self.tools)
         
-        # システムメッセージ
-        self.system_message = """
-あなたはECバックオフィス商品管理の専門アシスタントです。以下のワークフローに従って段階的に処理を進めてください：
+        # 柔軟なワークフローを構築
+        self.graph = self._build_flexible_graph()
 
-## 処理ワークフロー：
-1. **理解フェーズ**: ユーザーの要求を理解し、必要な操作を特定
-2. **検索フェーズ**: 対象商品を検索・特定
-3. **検証フェーズ**: 操作前の前提条件をチェック
-4. **問題解決フェーズ**: 問題がある場合、解決方法を提示
-5. **実行フェーズ**: 条件満足後、実際の操作を実行
-6. **報告フェーズ**: 結果をユーザーに報告
+    def assistant(self, state: AgentState):
+        # System message
+        sys_msg = SystemMessage(
+            content="""
+あなたはECバックオフィス商品管理の専門アシスタントです。管理者の自然言語コマンドを理解し、以下の機能を提供します：
 
-## 商品棚上げの前提条件：
-- ✅ 商品カテゴリーが設定されている
+## 主要機能：
+1. **商品検索**: 自然言語で商品を検索・フィルタリング
+2. **商品棚上げ・棚下げ管理**: 商品の棚上げ・棚下げ状態を管理
+3. **商品在庫管理**: 商品の在庫状態を管理
+4. **動的HTML生成**: 操作に応じた管理画面を自動生成
+5. **エラー処理と誘導**: 問題解決まで段階的にサポート
+
+## 商品棚上げの前提条件チェック：
+商品を棚上げする前に、必ず以下の条件を確認してください：
+- ✅ 商品カテゴリーが設定されている（null または空文字列ではない）
 - ✅ 商品在庫が0より大きい
 
-## 応答形式：
-JSON形式で以下の情報を含めてください：
-- message: ユーザー向けメッセージ
-- action_type: 実行されたアクションタイプ
-- html_content: 必要に応じてHTML内容
-- next_actions: 推奨される次のアクション
-- error: エラーがある場合のメッセージ
+## HTML生成ルール：
+- 商品リスト表示：検索結果を表形式で表示、各商品に操作ボタン付き
+- カテゴリー設定画面：フォーム形式でカテゴリー選択・入力
+- 在庫管理画面：数値入力フォームで在庫数量設定
+- エラー画面：問題点を明示し、解決方法を提示
 
-常に日本語で親しみやすく応答してください。
-"""
-        
-        # LangGraphのワークフローを構築
-        self.graph = self._build_graph()
-    
-    def _build_graph(self) -> StateGraph:
-        """LangGraphワークフローを構築"""
-        
-        # ワークフローグラフを作成
-        workflow = StateGraph(AgentState)
-        
-        # ノードを追加
-        workflow.add_node("understand_request", self._understand_request)
-        workflow.add_node("search_products", self._search_products) 
-        workflow.add_node("validate_conditions", self._validate_conditions)
-        workflow.add_node("resolve_problems", self._resolve_problems)
-        workflow.add_node("execute_action", self._execute_action)
-        workflow.add_node("generate_response", self._generate_response)
-        workflow.add_node("tools", self.tool_node)
-        
-        # エントリーポイントを設定
-        workflow.set_entry_point("understand_request")
-        
-        # エッジを追加
-        workflow.add_edge("understand_request", "search_products")
-        workflow.add_edge("search_products", "validate_conditions")
-        workflow.add_conditional_edges(
-            "validate_conditions",
-            self._decide_validation_result,
-            {
-                "problems_found": "resolve_problems",
-                "ready_to_execute": "execute_action",
-                "need_tools": "tools"
-            }
+## 重要な動作原則：
+1. ユーザーが問題解決まで段階的にサポート
+2. 毎回応答の最後、***必ず***適切な操作画面(HTML)を自動生成
+
+## 応答形式：
+- JSON形式で構造化された応答
+- HTML生成が必要な場合は "html_content" フィールドに含める
+- エラーメッセージは "error" フィールドに日本語で記載
+- 次のアクション提案は "next_actions" フィールドに含める
+
+常に親しみやすく明確な日本語で応答し、管理者の業務効率向上を最優先に考えてください。
+""")
+
+        state["messages"].append(self.llm_with_tools.invoke([sys_msg] + state["messages"]))
+        return state
+
+    def _build_flexible_graph(self) -> StateGraph:
+        """柔軟なワークフローグラフを構築"""
+        # workflow = StateGraph(AgentState)
+        #
+        # # ノードを追加
+        # workflow.add_node("intent_analysis", self._analyze_intent)  # 意図分析 - インテリジェントルーティング
+        # workflow.add_node("direct_execution", self._direct_execution)  # 直接実行
+        # workflow.add_node("search_first", self._search_first)  # まず検索してから実行
+        # workflow.add_node("validate_and_execute", self._validate_and_execute)  # 検証後実行
+        # workflow.add_node("generate_form", self._generate_form)  # フォーム生成
+        # workflow.add_node("final_response", self._final_response)  # 最終レスポンス
+        #
+        # # エントリーポイント設定
+        # workflow.set_entry_point("intent_analysis")
+        #
+        # # 条件エッジを追加 - 意図に基づくインテリジェントルーティング
+        # workflow.add_conditional_edges(
+        #     "intent_analysis",
+        #     self._route_by_intent,
+        #     {
+        #         "direct_execution": "direct_execution",      # 直接実行（明確なパラメータあり）
+        #         "search_first": "search_first",              # まず検索（商品を見つける必要あり）
+        #         "validate_first": "validate_and_execute",    # 検証が必要（棚上げなど）
+        #         "need_form": "generate_form",                # より多くの情報が必要
+        #         "error": "final_response"                    # エラー処理
+        #     }
+        # )
+        #
+        # # すべてのパスは最終的にfinal_responseに
+        # workflow.add_edge("direct_execution", "final_response")
+        # workflow.add_edge("search_first", "final_response")
+        # workflow.add_edge("validate_and_execute", "final_response")
+        # workflow.add_edge("generate_form", "final_response")
+        # workflow.add_edge("final_response", END)
+
+        # Define the state graph
+        # The graph
+        builder = StateGraph(AgentState)
+
+        # Define nodes: these do the work
+        builder.add_node("assistant", self.assistant)
+        builder.add_node("tools", self.tool_node)
+
+        # Define edges: these determine how the control flow moves
+        builder.add_edge(START, "assistant")
+        builder.add_conditional_edges(
+            "assistant",
+            # If the latest message requires a tool, route to tools
+            # Otherwise, provide a direct response
+            tools_condition,
         )
-        workflow.add_edge("resolve_problems", "generate_response")
-        workflow.add_edge("execute_action", "generate_response")
-        workflow.add_edge("tools", "generate_response")
-        workflow.add_edge("generate_response", END)
+        builder.add_edge("tools", "assistant")
         
-        return workflow.compile()
+        return builder.compile()
     
     def _get_langfuse_config(self, step_name: str = None, session_id: str = None, user_id: str = None) -> Dict:
-        """Langfuse V3 CallbackHandlerの設定を取得"""
+        """Langfuse設定を取得"""
         if self.use_langfuse and self.langfuse_handler:
-            # セッション/ユーザー固有のCallbackHandlerを作成
-            if session_id or user_id:
-                return {"callbacks": [self.langfuse_handler],
-                        "metadata": {
-                            "langfuse.user_id": user_id,
-                            "langfuse.session_id": session_id,
-                            "tags": [f"step:{step_name}", "langgraph", "product_management"] if step_name else ["langgraph", "product_management"]
-                }}
-            else:
-                # デフォルトのCallbackHandlerを使用
-                return {"callbacks": [self.langfuse_handler],
-                        "metadata": {
-                            "tags": [f"step:{step_name}", "langgraph", "product_management"] if step_name else ["langgraph", "product_management"]
-                        }}
+            return {"callbacks": [self.langfuse_handler],
+                    "metadata": {
+                        "langfuse.user_id": user_id,
+                        "langfuse.session_id": session_id
+                    }}
         return {}
     
-    def _understand_request(self, state: AgentState) -> AgentState:
-        """ユーザーリクエストを理解 (Langfuse V3 CallbackHandlerでLLM呼び出しをトレース)"""
+    def _analyze_intent(self, state: AgentState) -> AgentState:
+        """インテリジェント意図分析 - ワークフローパスを決定"""
         user_input = state["user_input"]
-        session_id = state.get("session_id")
         user_id = state.get("user_id")
+        session_id = state.get("session_id")
         
-        # リクエストの意図を分析
-        analysis_prompt = f"""
-ユーザーリクエスト: {user_input}
+        # インテリジェント意図分析プロンプトを構築
+        intent_prompt = f"""
+ユーザー入力: {user_input}
 
-このリクエストを分析して、以下の情報を抽出してください：
-1. 主要なアクション（検索、棚上げ、棚下げ、在庫更新、カテゴリー更新など）
-2. 対象商品の特定条件（商品名、JANコード、カテゴリーなど）
-3. 必要なパラメータ（在庫数、カテゴリー名など）
+ユーザーの意図を分析し、重要な情報を抽出してください。JSON形式で返してください：
 
-JSON形式で応答してください。
+{{
+    "intent": "検索|在庫更新|カテゴリー更新|棚上げ|棚下げ|一括操作",
+    "execution_type": "direct|search_first|validate_first|need_form",
+    "target_identification": {{
+        "type": "jan_code|product_name|category|condition",
+        "value": "具体的な値",
+        "has_clear_target": true/false
+    }},
+    "action_params": {{
+        "new_stock": 数量またはnull,
+        "new_category": "カテゴリー名"またはnull,
+        "quantity": 数量またはnull
+    }},
+    "confidence": 0.0-1.0
+}}
+
+execution_type説明：
+- direct: 明確な商品識別子とパラメータがあり、直接実行可能
+- search_first: まず商品を検索して見つける必要がある
+- validate_first: 条件の検証が必要（棚上げ前のチェックなど）
+- need_form: 必要なパラメータが不足、フォームが必要
+
+例：
+"JAN123456の在庫を50に変更" → direct (明確なJANコードと在庫値あり)
+"コーヒー商品の在庫をすべて100に変更" → search_first (まずすべてのコーヒー商品を見つける必要)
+"商品ABCを棚上げ" → validate_first (棚上げ条件をチェックする必要)
+"商品在庫を修正" → need_form (具体的な商品と在庫値が不足)
 """
         
-        messages = [SystemMessage(content=analysis_prompt)]
-        
-        # Langfuse V3 CallbackHandlerを使用してLLM呼び出しをトレース
-        config = self._get_langfuse_config("understand_request", session_id, user_id)
-        response = self.llm.invoke(messages, config=config)
-        
-        # アクションタイプを特定
-        action_type = self._extract_action_type(user_input)
-        
-        state["current_step"] = "understood"
-        state["action_type"] = action_type
-        state["intermediate_steps"].append({
-            "step": "understand_request",
-            "analysis": response.content,
-            "action_type": action_type
-        })
-        
-        return state
-    
-    def _search_products(self, state: AgentState) -> AgentState:
-        """商品検索を実行"""
-        user_input = state["user_input"]
-        session_id = state.get("session_id")
-        user_id = state.get("user_id")
-        
-        # 検索ツールを使用
-        search_tool = SearchProductsTool()
+        messages = [SystemMessage(content=intent_prompt)]
+        config = self._get_langfuse_config("intent_analysis", session_id, user_id)
         
         try:
-            # 自然言語から検索条件を抽出
-            search_query = self._extract_search_conditions(user_input)
+            response = self.llm.invoke(messages, config=config)
+            intent_data = json.loads(response.content)
             
-            # ツール実行（直接実行、上位のCallbackHandlerで追跡）
-            search_result = search_tool._run(search_query)
+            # 状態を更新
+            state["intent"] = intent_data.get("intent")
+            state["action_params"] = intent_data.get("action_params", {})
+            state["workflow_path"] = ["intent_analysis"]
             
-            # 結果をパース
-            if isinstance(search_result, str):
-                try:
-                    search_data = json.loads(search_result)
-                    state["search_results"] = search_data.get("products", [])
-                except json.JSONDecodeError:
-                    state["search_results"] = []
-                    state["error_message"] = "検索結果の解析に失敗しました"
+            # 直接実行タイプの場合、対象商品を抽出試行
+            if intent_data.get("execution_type") == "direct":
+                target_info = intent_data.get("target_identification", {})
+                if target_info.get("has_clear_target"):
+                    # 対象商品情報を構築
+                    if target_info.get("type") == "jan_code":
+                        state["target_products"] = [{"jan_code": target_info.get("value")}]
+                    elif target_info.get("type") == "product_name":
+                        state["target_products"] = [{"name": target_info.get("value")}]
             
-            state["current_step"] = "searched"
-            state["intermediate_steps"].append({
-                "step": "search_products",
-                "query": search_query,
-                "results_count": len(state["search_results"] or [])
-            })
+            # 次のステップを設定
+            state["next_step"] = intent_data.get("execution_type", "search_first")
             
         except Exception as e:
-            state["error_message"] = f"商品検索中にエラーが発生しました: {str(e)}"
-            state["search_results"] = []
+            state["error_message"] = f"意図分析に失敗しました: {str(e)}"
+            state["next_step"] = "error"
         
         return state
     
-    def _validate_conditions(self, state: AgentState) -> AgentState:
-        """前提条件を検証（必要に応じてLLMを使用）"""
-        action_type = state.get("action_type")
-        search_results = state.get("search_results", [])
-        session_id = state.get("session_id")
-        user_id = state.get("user_id")
+    def _route_by_intent(self, state: AgentState) -> Literal["direct_execution", "search_first", "validate_first", "need_form", "error"]:
+        """意図に基づくインテリジェントルーティング"""
+        next_step = state.get("next_step", "search_first")
         
-        if not search_results:
-            state["validation_results"] = {
-                "valid": False,
-                "issues": ["対象商品が見つかりません"]
-            }
-            state["current_step"] = "validation_failed"
-            return state
+        if state.get("error_message"):
+            return "error"
+        elif next_step == "direct":
+            return "direct_execution"
+        elif next_step == "validate_first":
+            return "validate_first"  
+        elif next_step == "need_form":
+            return "need_form"
+        else:
+            return "search_first"
+    
+    def _direct_execution(self, state: AgentState) -> AgentState:
+        """直接実行 - 明確なパラメータがある場合に使用"""
+        intent = state.get("intent")
+        target_products = state.get("target_products", [])
+        action_params = state.get("action_params", {})
         
-        validation_issues = []
+        state["workflow_path"].append("direct_execution")
         
-        # 棚上げの場合の特別な検証
-        if action_type in ["publish", "棚上げ", "公開"]:
-            validate_tool = ValidateProductTool()
+        try:
+            if intent == "在庫更新" and target_products and action_params.get("new_stock") is not None:
+                # 直接在庫更新
+                tool = self.tool_map.get("update_stock")
+                if tool and target_products[0].get("jan_code"):
+                    result = tool._run(
+                        f"{target_products[0]['jan_code']},{action_params['new_stock']}"
+                    )
+                    state["execution_result"] = {"success": True, "result": result}
+                
+            elif intent == "カテゴリー更新" and target_products and action_params.get("new_category"):
+                # 直接カテゴリー更新
+                tool = self.tool_map.get("update_category")
+                if tool and target_products[0].get("jan_code"):
+                    result = tool._run(
+                        f"{target_products[0]['jan_code']},{action_params['new_category']}"
+                    )
+                    state["execution_result"] = {"success": True, "result": result}
+                    
+            else:
+                state["error_message"] = "直接実行条件が満たされていません。より多くの情報が必要です"
+                
+        except Exception as e:
+            state["error_message"] = f"直接実行に失敗しました: {str(e)}"
+        
+        return state
+    
+    def _search_first(self, state: AgentState) -> AgentState:
+        """まず検索してから実行 - 対象商品を見つける必要がある場合に使用"""
+        user_input = state["user_input"]
+        intent = state.get("intent")
+        action_params = state.get("action_params", {})
+        
+        state["workflow_path"].append("search_first")
+        
+        try:
+            # 1. まず商品を検索
+            search_tool = self.tool_map.get("search_products")
+            search_query = self._extract_search_query(user_input)
+            print(search_query)
+            search_result = search_tool._run(search_query)
             
-            for product in search_results:
-                jan_code = product.get("jan_code", "")
-                if jan_code:
-                    try:
+            if isinstance(search_result, str):
+                search_data = json.loads(search_result)
+                products = search_data.get("products", [])
+                
+                if not products:
+                    state["error_message"] = "マッチする商品が見つかりませんでした"
+                    return state
+                
+                state["target_products"] = products
+                
+                # 2. 意図に応じて相応の操作を実行
+                if intent == "在庫更新" and action_params.get("new_stock") is not None:
+                    # 一括在庫更新
+                    tool = self.tool_map.get("bulk_update_stock") 
+                    jan_codes = [p.get("jan_code") for p in products if p.get("jan_code")]
+                    if jan_codes:
+                        result = tool._run(f"{','.join(jan_codes)},{action_params['new_stock']}")
+                        state["execution_result"] = {"success": True, "result": result, "affected_count": len(jan_codes)}
+                
+                elif intent == "棚上げ":
+                    # 一括棚上げ
+                    tool = self.tool_map.get("publish_products")
+                    jan_codes = [p.get("jan_code") for p in products if p.get("jan_code")]
+                    if jan_codes:
+                        result = tool._run(",".join(jan_codes))
+                        state["execution_result"] = {"success": True, "result": result, "affected_count": len(jan_codes)}
+                
+                elif intent == "棚下げ":
+                    # 一括棚下げ  
+                    tool = self.tool_map.get("unpublish_products")
+                    jan_codes = [p.get("jan_code") for p in products if p.get("jan_code")]
+                    if jan_codes:
+                        result = tool._run(",".join(jan_codes))
+                        state["execution_result"] = {"success": True, "result": result, "affected_count": len(jan_codes)}
+                
+                else:
+                    # 検索のみ、操作は実行しない
+                    state["execution_result"] = {
+                        "success": True, 
+                        "result": f"{len(products)}個の商品が見つかりました", 
+                        "products": products
+                    }
+        
+        except Exception as e:
+            state["error_message"] = f"検索実行に失敗しました: {str(e)}"
+        
+        return state
+    
+    def _validate_and_execute(self, state: AgentState) -> AgentState:
+        """検証後実行 - 前提条件をチェックする必要がある場合に使用"""
+        target_products = state.get("target_products", [])
+        intent = state.get("intent")
+        
+        state["workflow_path"].append("validate_and_execute")
+        
+        try:
+            # 対象商品がない場合、まず検索
+            if not target_products:
+                search_tool = self.tool_map.get("search_products")
+                search_query = self._extract_search_query(state["user_input"])
+                search_result = search_tool._run(search_query)
+                
+                if isinstance(search_result, str):
+                    search_data = json.loads(search_result)
+                    target_products = search_data.get("products", [])
+                    state["target_products"] = target_products
+            
+            if not target_products:
+                state["error_message"] = "対象商品が見つかりませんでした"
+                return state
+            
+            # 検証して実行
+            if intent == "棚上げ":
+                validate_tool = self.tool_map.get("validate_product")
+                publish_tool = self.tool_map.get("publish_products")
+                
+                valid_products = []
+                issues = []
+                
+                # 一つずつ検証
+                for product in target_products:
+                    jan_code = product.get("jan_code")
+                    if jan_code:
                         validation_result = validate_tool._run(jan_code)
                         validation_data = json.loads(validation_result)
                         
-                        if not validation_data.get("valid", False):
-                            issues = validation_data.get("issues", [])
-                            validation_issues.extend([f"商品{jan_code}: {issue}" for issue in issues])
-                    except Exception as e:
-                        validation_issues.append(f"商品{jan_code}の検証中にエラー: {str(e)}")
+                        if validation_data.get("valid"):
+                            valid_products.append(product)
+                        else:
+                            issues.extend(validation_data.get("issues", []))
+                
+                if valid_products:
+                    # 棚上げを実行
+                    jan_codes = [p.get("jan_code") for p in valid_products]
+                    result = publish_tool._run(",".join(jan_codes))
+                    
+                    state["execution_result"] = {
+                        "success": True,
+                        "result": result,
+                        "valid_count": len(valid_products),
+                        "issues": issues
+                    }
+                else:
+                    state["error_message"] = f"すべての商品に問題があります: {'; '.join(issues)}"
         
-        # 複雑な検証の場合、LLMを使用してCallbackHandlerでトレース
-        if validation_issues and action_type in ["publish", "棚上げ", "公開"]:
-            validation_prompt = f"""
-以下の商品検証で問題が見つかりました：
-{json.dumps(validation_issues, ensure_ascii=False, indent=2)}
-
-これらの問題を分析して、解決の優先順位と推奨アクションを提案してください。
-"""
-            messages = [SystemMessage(content=validation_prompt)]
-            config = self._get_langfuse_config("validate_conditions_analysis", session_id, user_id)
-            
-            # LLM呼び出しをCallbackHandlerでトレース
-            analysis_response = self.llm.invoke(messages, config=config)
-            
-            state["intermediate_steps"].append({
-                "step": "validation_analysis",
-                "llm_analysis": analysis_response.content
-            })
-        
-        state["validation_results"] = {
-            "valid": len(validation_issues) == 0,
-            "issues": validation_issues
-        }
-        
-        state["current_step"] = "validated"
-        state["intermediate_steps"].append({
-            "step": "validate_conditions",
-            "validation_results": state["validation_results"]
-        })
+        except Exception as e:
+            state["error_message"] = f"検証実行に失敗しました: {str(e)}"
         
         return state
     
-    def _resolve_problems(self, state: AgentState) -> AgentState:
-        """問題解決画面を生成（LLMを使用して解決策を生成）"""
-        validation_results = state.get("validation_results", {})
-        issues = validation_results.get("issues", [])
-        session_id = state.get("session_id")
-        user_id = state.get("user_id")
+    def _generate_form(self, state: AgentState) -> AgentState:
+        """フォーム生成 - より多くの情報が必要な場合に使用"""
+        intent = state.get("intent")
         
-        # 問題に応じたHTML画面を生成
-        html_tool = GenerateHtmlTool()
+        state["workflow_path"].append("generate_form")
         
         try:
-            # 問題の種類に応じて適切な画面タイプを決定
-            page_type = "error_resolution"
-            if any("カテゴリー" in issue for issue in issues):
-                page_type = "category_form"
-            elif any("在庫" in issue for issue in issues):
-                page_type = "stock_form"
+            html_tool = self.tool_map.get("generate_html")
             
-            # LLMを使用して問題解決提案を生成
-            resolution_prompt = f"""
-以下の商品管理問題に対する解決策を提案してください：
-問題: {json.dumps(issues, ensure_ascii=False)}
-画面タイプ: {page_type}
-
-解決策として以下を含めてください：
-1. 具体的な修正手順
-2. ユーザーが実行すべきアクション
-3. 注意事項
-
-JSON形式で応答してください。
-"""
-            messages = [SystemMessage(content=resolution_prompt)]
-            config = self._get_langfuse_config("problem_resolution", session_id, user_id)
+            if intent == "在庫更新":
+                form_type = "stock_form"
+            elif intent == "カテゴリー更新":
+                form_type = "category_form"
+            else:
+                form_type = "general_form"
             
-            # LLM呼び出しをCallbackHandlerでトレース
-            resolution_response = self.llm.invoke(messages, config=config)
-            
-            # HTML生成
-            html_result = html_tool._run(page_type, {
-                "issues": issues,
-                "products": state.get("search_results", []),
-                "resolution_advice": resolution_response.content
+            html_result = html_tool._run(form_type, {
+                "intent": intent,
+                "message": "操作を完了するためにより多くの情報を提供してください"
             })
             
             html_data = json.loads(html_result)
             if html_data.get("success"):
                 state["html_content"] = html_data.get("html_content")
-            
-            state["intermediate_steps"].append({
-                "step": "problem_resolution_llm",
-                "resolution_advice": resolution_response.content
-            })
-            
-        except Exception as e:
-            state["error_message"] = f"問題解決画面の生成に失敗: {str(e)}"
+                state["execution_result"] = {"success": True, "needs_more_info": True}
         
-        state["current_step"] = "problems_resolved"
-        state["intermediate_steps"].append({
-            "step": "resolve_problems",
-            "issues_count": len(issues)
-        })
+        except Exception as e:
+            state["error_message"] = f"フォーム生成に失敗しました: {str(e)}"
         
         return state
     
-    def _execute_action(self, state: AgentState) -> AgentState:
-        """アクションを実行"""
-        action_type = state.get("action_type")
-        search_results = state.get("search_results", [])
-        
-        try:
-            if action_type in ["publish", "棚上げ", "公開"]:
-                publish_tool = PublishProductsTool()
-                jan_codes = [p.get("jan_code") for p in search_results if p.get("jan_code")]
-                result = publish_tool._run(",".join(jan_codes))
-                
-            elif action_type in ["unpublish", "棚下げ", "非公開"]:
-                unpublish_tool = UnpublishProductsTool()
-                jan_codes = [p.get("jan_code") for p in search_results if p.get("jan_code")]
-                result = unpublish_tool._run(",".join(jan_codes))
-                
-            else:
-                result = "アクションが特定できませんでした"
-            
-            state["current_step"] = "executed"
-            state["intermediate_steps"].append({
-                "step": "execute_action",
-                "action_type": action_type,
-                "result": result
-            })
-            
-        except Exception as e:
-            state["error_message"] = f"アクション実行中にエラー: {str(e)}"
-        
-        return state
-    
-    def _generate_response(self, state: AgentState) -> AgentState:
-        """最終応答を生成（LLMを使用して最終メッセージを作成）"""
-        current_step = state.get("current_step", "")
+    def _final_response(self, state: AgentState) -> AgentState:
+        """最終レスポンスを生成"""
+        intent = state.get("intent")
+        execution_result = state.get("execution_result", {})
         error_message = state.get("error_message")
-        session_id = state.get("session_id")
-        user_id = state.get("user_id")
+        workflow_path = state.get("workflow_path", [])
         
-        # LLMを使用して最終応答を生成
-        response_prompt = f"""
-以下の商品管理ワークフローが完了しました。ユーザーに対する親しみやすい最終メッセージを生成してください：
-
-現在のステップ: {current_step}
-エラーメッセージ: {error_message if error_message else "なし"}
-実行されたステップ: {json.dumps(state.get("intermediate_steps", []), ensure_ascii=False)}
-
-以下の要件でメッセージを作成してください：
-1. 日本語で親しみやすい口調
-2. 実行された操作の要約
-3. 次にできることの提案
-
-簡潔で分かりやすい応答をお願いします。
-"""
-        
-        messages = [SystemMessage(content=response_prompt)]
-        config = self._get_langfuse_config("generate_final_response", session_id, user_id)
-        
-        try:
-            # LLM呼び出しをCallbackHandlerでトレース
-            final_response = self.llm.invoke(messages, config=config)
-            response_message = final_response.content
-            
-            state["intermediate_steps"].append({
-                "step": "final_response_generation",
-                "llm_generated_message": response_message
-            })
-            
-        except Exception as e:
-            # LLM生成に失敗した場合のフォールバック
-            if error_message:
-                response_message = f"申し訳ございません。{error_message}"
-            elif current_step == "problems_resolved":
-                response_message = "問題が見つかりました。解決方法を画面に表示しています。"
-            elif current_step == "executed":
-                response_message = "操作が正常に完了しました。"
+        # レスポンスメッセージを構築
+        if error_message:
+            response_message = f"申し訳ございません。{error_message}"
+        elif execution_result.get("success"):
+            if execution_result.get("needs_more_info"):
+                response_message = "操作を完了するために追加情報が必要です。フォームにご入力ください。"
+            elif execution_result.get("affected_count"):
+                response_message = f"操作が完了しました。{execution_result['affected_count']}個の商品に適用されました。"
             else:
-                response_message = "処理を実行しました。"
+                response_message = "操作が正常に完了しました。"
+        else:
+            response_message = "処理を実行しました。"
         
-        # 次のアクションを提案
-        next_actions = self._suggest_next_actions(state)
+        # 実行パス情報を追加
+        response_message += f"\n実行パス: {' → '.join(workflow_path)}"
         
         state["messages"].append(AIMessage(content=response_message))
-        state["next_actions"] = next_actions
-        state["current_step"] = "completed"
         
         return state
     
-    def _decide_validation_result(self, state: AgentState) -> Literal["problems_found", "ready_to_execute", "need_tools"]:
-        """検証結果に基づく次のステップを決定"""
-        validation_results = state.get("validation_results", {})
-        
-        if not validation_results.get("valid", True):
-            return "problems_found"
-        else:
-            return "ready_to_execute"
-    
-    def _extract_action_type(self, user_input: str) -> str:
-        """ユーザー入力からアクションタイプを抽出"""
-        user_input_lower = user_input.lower()
-        
-        if any(keyword in user_input_lower for keyword in ["棚上げ", "公開", "販売開始", "publish"]):
-            return "publish"
-        elif any(keyword in user_input_lower for keyword in ["棚下げ", "非公開", "販売停止", "unpublish"]):
-            return "unpublish"
-        elif any(keyword in user_input_lower for keyword in ["在庫", "stock"]):
-            return "update_stock"
-        elif any(keyword in user_input_lower for keyword in ["カテゴリー", "category"]):
-            return "update_category"
-        else:
-            return "search"
-    
-    def _extract_search_conditions(self, user_input: str) -> str:
-        """ユーザー入力から検索条件を抽出"""
-        # 簡単な条件抽出ロジック
-        if "在庫" in user_input and "未満" in user_input:
-            return "low_stock"
-        elif "コーヒー" in user_input:
+    def _extract_search_query(self, user_input: str) -> str:
+        """ユーザー入力から検索クエリを抽出"""
+        # シンプルなクエリ抽出ロジック
+        if "コーヒー" in user_input:
             return "コーヒー"
+        elif "在庫" in user_input and "未満" in user_input:
+            return "low_stock"
         elif "JAN" in user_input or "jan" in user_input:
-            # JANコードを抽出する簡単なロジック
             import re
             jan_match = re.search(r'(\d+)', user_input)
             if jan_match:
                 return f"jan:{jan_match.group(1)}"
         
         return user_input
-    
-    def _suggest_next_actions(self, state: AgentState) -> List[str]:
-        """次のアクションを提案"""
-        current_step = state.get("current_step", "")
-        action_type = state.get("action_type", "")
-        
-        if current_step == "problems_resolved":
-            return ["問題を解決後、再度棚上げを実行", "他の商品を検索"]
-        elif current_step == "executed":
-            if action_type == "publish":
-                return ["他の商品を棚上げ", "在庫状況を確認", "売上データを確認"]
-            elif action_type == "unpublish":
-                return ["他の商品を棚下げ", "商品情報を更新"]
-        
-        return ["他の商品を検索", "別の操作を実行"]
 
     @observe(name="product_management_workflow")
     def process_command(self, command: str, session_id: str = None, user_id: str = None) -> str:
-        """LangGraphとLangfuse V3 CallbackHandlerを使用してコマンドを処理"""
+        """ユーザーコマンドを処理 - 柔軟なワークフロー"""
         try:
-            # 初期状態を設定
+            # Langfuseコンテキストを設定
+            # if self.use_langfuse and langfuse_context:
+            #     langfuse_context.update_current_trace(
+            #         metadata={
+            #             "agent_type": "flexible_product_management",
+            #             "command": command
+            #         },
+            #         session_id=session_id,
+            #         user_id=user_id
+            #     )
+            
+            # 初期状態
             initial_state = AgentState(
                 messages=[HumanMessage(content=command)],
-                current_step="start",
                 user_input=command,
-                search_results=None,
-                validation_results=None,
-                selected_products=None,
-                action_type=None,
+                # intent=None,
+                # target_products=None,
+                # action_params=None,
+                # execution_result=None,
                 html_content=None,
                 error_message=None,
                 next_actions=None,
                 session_id=session_id,
                 user_id=user_id,
-                intermediate_steps=[]
+                # workflow_path=[]
             )
             
-            # LangGraphワークフローを実行（CallbackHandlerが自動的にLLM呼び出しをトレース）
+            # 柔軟なワークフローを実行
             config = self._get_langfuse_config("product_management_workflow", session_id, user_id)
             final_state = self.graph.invoke(initial_state, config=config)
             
-            # 応答を構築
+            # レスポンスを構築
             response_data = {
                 "message": final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました",
-                "action_type": final_state.get("action_type"),
+                # "intent": final_state.get("intent"),
+                # "execution_result": final_state.get("execution_result"),
                 "html_content": final_state.get("html_content"),
-                "next_actions": final_state.get("next_actions", []),
-                "current_step": final_state.get("current_step"),
-                "search_results_count": len(final_state.get("search_results") or []),
-                "workflow_steps": len(final_state.get("intermediate_steps", [])),
-                "langfuse_trace_available": self.use_langfuse
+                "next_actions": final_state.get("next_actions"),
+                # "workflow_path": final_state.get("workflow_path", []),
+                # "target_products_count": len(final_state.get("target_products") or []),
+                # "langfuse_trace_id": langfuse_context.get_current_trace_id() if self.use_langfuse and langfuse_context else None
             }
             
             if final_state.get("error_message"):
                 response_data["error"] = final_state["error_message"]
             
-            output = json.dumps(response_data, ensure_ascii=False, indent=2)
-            return output
+            return json.dumps(response_data, ensure_ascii=False, indent=2)
             
         except Exception as e:
-            error_msg = f"LangGraphワークフローでエラーが発生しました: {str(e)}"
+            error_msg = f"柔軟なワークフロー実行に失敗しました: {str(e)}"
             return json.dumps({
                 "message": error_msg,
                 "error": str(e)
             }, ensure_ascii=False)
 
-    def get_workflow_visualization(self) -> str:
-        """ワークフローの可視化情報を取得"""
-        langfuse_status = "✅ Active (langfuse.langchain.CallbackHandler)" if self.use_langfuse else "❌ Disabled"
-        return f"""
-LangGraph + Langfuse V3 CallbackHandler 商品管理ワークフロー:
-Langfuse Status: {langfuse_status}
+    def get_workflow_info(self) -> str:
+        """ワークフロー情報を取得"""
+        return """
+柔軟な商品管理LangGraphワークフロー:
 
-1. understand_request (リクエスト理解) [LLM Call Traced]
-   ↓
-2. search_products (商品検索) [Tool Execution]
-   ↓
-3. validate_conditions (条件検証) [LLM Call Traced if complex]
-   ↓
-4. [条件分岐]
-   ├─ problems_found → resolve_problems (問題解決) [LLM Call Traced]
-   ├─ ready_to_execute → execute_action (アクション実行) [Tool Execution]
-   └─ need_tools → tools (ツール実行)
-   ↓
-5. generate_response (応答生成) [LLM Call Traced]
-   ↓
-6. END
+エントリーポイント: intent_analysis (インテリジェント意図分析)
+├─ ユーザー入力を分析し、意図とパラメータを抽出
+├─ インテリジェントに実行パスを決定
 
-※ 全てのLLM呼び出しがLangfuse V3 CallbackHandlerによって自動的にトレースされます
-※ セッションID、ユーザーIDによる追跡が可能です
-※ ツール実行とワークフロー全体が階層的に記録されます
-※ エラーハンドリングも含めて完全なトレーサビリティを実現
+ルーティング選択:
+├─ direct_execution (直接実行)
+│  └─ 条件: 明確な商品識別子 + 完全なパラメータ
+│  └─ 例: "JAN123456の在庫を50に変更"
+│
+├─ search_first (まず検索してから実行)  
+│  └─ 条件: 対象商品を検索して見つける必要がある
+│  └─ 例: "すべてのコーヒー商品の在庫を100に変更"
+│
+├─ validate_and_execute (検証後実行)
+│  └─ 条件: 前提条件の検証が必要
+│  └─ 例: "商品ABCを棚上げ"
+│
+└─ generate_form (フォーム生成)
+   └─ 条件: 必要なパラメータが不足
+   └─ 例: "商品在庫を修正"
+
+利点:
+✅ インテリジェントルーティング - LLMが自動的に最適な実行パスを選択
+✅ 柔軟な開始点 - 任意のノードから開始可能
+✅ パラメータ抽出 - ユーザー意図とパラメータを自動解析
+✅ エラー処理 - 優雅な降格とエラー回復
+✅ 完全な追跡 - Langfuseによる全プロセス記録
 """
 
-    # def get_langfuse_status(self) -> Dict[str, Any]:
-    #     """Langfuse V3の状態を取得"""
-    #     status = {
-    #         "available": LANGFUSE_AVAILABLE,
-    #         "handler_initialized": self.langfuse_handler is not None,
-    #         "callback_package": "langfuse.langchain.CallbackHandler",
-    #         "environment_variables": {
-    #             "LANGFUSE_PUBLIC_KEY": bool(os.getenv("LANGFUSE_PUBLIC_KEY")),
-    #             "LANGFUSE_SECRET_KEY": bool(os.getenv("LANGFUSE_SECRET_KEY")),
-    #             "LANGFUSE_HOST": os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-    #         }
-    #     }
-    #
-    #     if LANGFUSE_AVAILABLE:
-    #         try:
-    #             import langfuse
-    #             status["langfuse_version"] = langfuse.__version__
-    #         except:
-    #             status["langfuse_version"] = "unknown"
-    #
-    #     return status
+# 使用例とテストケース
+EXAMPLE_COMMANDS = [
+    # 直接実行タイプ
+    "JAN123456789の在庫を50に変更",
+    "商品987654321のカテゴリーを飲料に変更",
+    
+    # 検索後実行タイプ  
+    "すべてのコーヒー商品の在庫を100に変更",
+    "在庫不足の商品をすべて棚下げ",
+    "飲料カテゴリーの商品をすべて棚上げ",
+    
+    # 検証後実行タイプ
+    "商品ABC123を棚上げ",
+    "JAN555666777を販売開始",
+    
+    # フォームが必要なタイプ
+    "商品在庫を修正",
+    "商品情報を更新",
+    "商品管理"
+]
+
+if __name__ == "__main__":
+    # 初期状態
+    initial_state = AgentState(
+        messages=[HumanMessage(content="JAN code 1000000000001の商品を検索し、かつ商品詳細一覧画面を生成してください。")],
+        user_input="JAN code 1000000000001の商品を検索し、かつ商品詳細一覧画面を生成してください。",
+        # intent=None,
+        # target_products=None,
+        # action_params=None,
+        # execution_result=None,
+        html_content=None,
+        error_message=None,
+        next_actions=None,
+        session_id=None,
+        user_id=None,
+        # workflow_path=[]
+    )
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    agent_instance = ProductManagementAgent(api_key)
+    # 柔軟なワークフローを実行
+    config = agent_instance._get_langfuse_config("product_management_workflow")
+    final_state = agent_instance.graph.invoke(initial_state, config=config)
+    print(final_state)

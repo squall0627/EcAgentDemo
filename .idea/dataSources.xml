@@ -11,5 +11,12 @@
         <property name="trustServerCertificate" value="true" />
       </driver-properties>
     </data-source>
+    <data-source source="LOCAL" name="EcAgentDemo@sqllite" uuid="c7ddb531-9c82-46da-8a0a-5ed199aa3e94">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/app.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import json
 
+from config.llm_config_loader import llm_config
+
 router = APIRouter()
 
 class HtmlGenerateRequest(BaseModel):
@@ -26,7 +28,7 @@ async def generate_html_page(request: HtmlGenerateRequest):
             "stock_form": _generate_stock_form_html,
             "error_page": _generate_error_page_html
         }
-        
+
         if request.page_type not in html_templates:
             return HtmlGenerateResponse(
                 success=False,
@@ -34,15 +36,15 @@ async def generate_html_page(request: HtmlGenerateRequest):
                 html_content="",
                 error=f"未対応のページタイプ: {request.page_type}"
             )
-        
+
         html_content = html_templates[request.page_type](request.data)
-        
+
         return HtmlGenerateResponse(
             success=True,
             page_type=request.page_type,
             html_content=html_content
         )
-        
+
     except Exception as e:
         return HtmlGenerateResponse(
             success=False,
@@ -58,19 +60,19 @@ async def generate_html_page_direct(page_type: str, data: str = "{}"):
         data_dict = json.loads(data)
         request = HtmlGenerateRequest(page_type=page_type, data=data_dict)
         response = await generate_html_page(request)
-        
+
         if response.success:
             return HTMLResponse(content=response.html_content)
         else:
             raise HTTPException(status_code=400, detail=response.error)
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"HTML生成エラー: {str(e)}")
 
 # HTML生成関数（これらは内部関数として使用）
 def _generate_product_list_html(data: Dict[str, Any]) -> str:
     products = data.get("products", [])
-    
+
     html = """
     <!DOCTYPE html>
     <html lang="ja">
@@ -107,23 +109,23 @@ def _generate_product_list_html(data: Dict[str, Any]) -> str:
             </thead>
             <tbody>
     """
-    
+
     for product in products:
         status_class = "status-published" if product.get("status") == "published" else "status-unpublished"
         status_text = "公開中" if product.get("status") == "published" else "非公開"
-        
-        # 上架前提条件チェック
+
+        # 棚上げ前提条件チェック
         can_publish = bool(product.get("category")) and product.get("stock", 0) > 0
         publish_disabled = "" if can_publish else "disabled"
-        
+
         error_messages = []
         if not product.get("category"):
             error_messages.append("カテゴリー未設定")
         if product.get("stock", 0) <= 0:
             error_messages.append("在庫不足")
-        
+
         error_html = f"<br><span class='error'>{', '.join(error_messages)}</span>" if error_messages else ""
-        
+
         html += f"""
                 <tr>
                     <td>{product.get('jancode', '')}</td>
@@ -139,7 +141,7 @@ def _generate_product_list_html(data: Dict[str, Any]) -> str:
                     </td>
                 </tr>
         """
-    
+
     html += """
             </tbody>
         </table>
@@ -167,7 +169,7 @@ def _generate_product_list_html(data: Dict[str, Any]) -> str:
     </body>
     </html>
     """
-    
+
     return html
 
 def _generate_category_form_html(data: Dict[str, Any]) -> str:
@@ -375,8 +377,27 @@ def _generate_error_page_html(data: Dict[str, Any]) -> str:
 
 @router.get("/management-interface", response_class=HTMLResponse)
 async def get_management_interface():
-    """商品管理メインインターフェース"""
-    html = """
+    """商品管理メインインターフェース - 設定ファイルベース"""
+    
+    # 設定ファイルからLLM設定を取得
+    llm_models = llm_config.get_all_models()
+    default_model = llm_config.get_default_model()
+    
+    # 選択肢の生成
+    llm_options = ""
+    for model_config in llm_models:
+        selected = 'selected' if model_config["value"] == default_model else ''
+        llm_options += f'''<option value="{model_config["value"]}" 
+                         data-provider="{model_config["provider"]}" 
+                         data-model="{model_config["model"]}" 
+                         data-color="{model_config["color"]}"
+                         data-description="{model_config.get("description", "")}" 
+                         {selected}>{model_config["label"]}</option>\n'''
+    
+    # JavaScript用の設定
+    llm_js_config = llm_config.get_frontend_config()
+    
+    html = f"""
     <!DOCTYPE html>
     <html lang="ja">
     <head>
@@ -384,76 +405,228 @@ async def get_management_interface():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>EC商品管理システム</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .chat-interface { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-            .chat-input { width: 70%; padding: 10px; font-size: 16px; }
-            .chat-submit { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
-            .result-area { min-height: 400px; border: 1px solid #ddd; padding: 20px; background: white; }
+            body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }}
+            .container {{ max-width: 1200px; margin: 0 auto; }}
+            .header {{ background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .chat-interface {{ background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .input-row {{ display: flex; gap: 10px; align-items: center; margin-bottom: 15px; }}
+            .chat-input {{ flex: 1; padding: 12px; font-size: 16px; border: 2px solid #e1e5e9; border-radius: 6px; transition: border-color 0.3s; }}
+            .chat-input:focus {{ outline: none; border-color: #007bff; }}
+            .llm-select {{ padding: 12px; font-size: 14px; background: white; border: 2px solid #e1e5e9; border-radius: 6px; min-width: 300px; cursor: pointer; }}
+            .llm-select:focus {{ outline: none; border-color: #007bff; }}
+            .chat-submit {{ padding: 12px 24px; background: #007bff; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; transition: background-color 0.3s; }}
+            .chat-submit:hover {{ background: #0056b3; }}
+            .chat-submit:disabled {{ background: #6c757d; cursor: not-allowed; }}
+            .result-area {{ min-height: 500px; border: 2px solid #e1e5e9; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .llm-status {{ display: flex; align-items: center; gap: 8px; font-size: 13px; color: #666; margin-top: 8px; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }}
+            .llm-indicator {{ width: 10px; height: 10px; border-radius: 50%; }}
+            .ollama {{ background-color: #10b981; }}
+            .openai {{ background-color: #3b82f6; }}
+            .anthropic {{ background-color: #8b5cf6; }}
+            .loading {{ text-align: center; padding: 60px 20px; }}
+            .error {{ background: #ffe6e6; border: 2px solid #ff9999; padding: 20px; border-radius: 6px; color: #cc0000; }}
+            .llm-info {{ background: #e7f3ff; border: 2px solid #3b82f6; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; }}
+            .examples {{ background: #f8f9fa; padding: 15px; border-radius: 6px; margin-top: 15px; }}
+            .examples strong {{ color: #495057; }}
+            .examples ul {{ margin: 8px 0; padding-left: 20px; }}
+            .examples li {{ margin: 4px 0; color: #6c757d; }}
+            .spinner {{ width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto; }}
+            @keyframes spin {{
+                0% {{ transform: rotate(0deg); }}
+                100% {{ transform: rotate(360deg); }}
+            }}
+            .config-info {{ font-size: 12px; color: #999; text-align: right; margin-top: 10px; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>EC商品管理システム</h1>
+            <div class="header">
+                <h1 style="margin: 0; color: #343a40;">🤖 EC商品管理システム</h1>
+                <p style="margin: 10px 0 0 0; color: #6c757d;">自然言語でAIエージェントと対話して商品を管理できます</p>
+            </div>
             
             <div class="chat-interface">
-                <h3>自然言語コマンド入力</h3>
-                <input type="text" id="commandInput" class="chat-input" placeholder="例: コーヒー商品を検索して棚上げ可能か確認してください">
-                <button class="chat-submit" onclick="executeCommand()">実行</button>
+                <h3 style="margin-top: 0; color: #495057;">💬 自然言語コマンド入力</h3>
                 
-                <div style="margin-top: 10px; font-size: 14px; color: #666;">
-                    <strong>使用例:</strong><br>
-                    • "コーヒー商品を検索してください"<br>
-                    • "在庫が少ない商品を棚上げしてください"<br>
-                    • "JANコード123の商品のカテゴリーを設定してください"
+                <div class="input-row">
+                    <select id="llmSelect" class="llm-select" title="使用するLLMモデルを選択">
+                        {llm_options}
+                    </select>
+                    <input type="text" id="commandInput" class="chat-input" 
+                           placeholder="例: コーヒー商品を検索して棚上げ可能か確認してください"
+                           maxlength="500">
+                    <button id="submitBtn" class="chat-submit" onclick="executeCommand()">実行</button>
+                </div>
+                
+                <div class="llm-status">
+                    <span class="llm-indicator" id="llmIndicator"></span>
+                    <span id="llmStatus">LLM読み込み中...</span>
+                    <span id="llmDescription" style="color: #999; font-style: italic;"></span>
+                </div>
+                
+                <div class="examples">
+                    <strong>💡 使用例:</strong>
+                    <ul>
+                        <li>"コーヒー商品を検索してください"</li>
+                        <li>"在庫が少ない商品を棚上げしてください"</li>
+                        <li>"JANコード123の商品のカテゴリーを設定してください"</li>
+                        <li>"未分類の商品をすべて表示してください"</li>
+                    </ul>
+                </div>
+                
+                <div class="config-info">
+                    ⚙️ LLM設定は config/llm_config.json で管理されています
                 </div>
             </div>
             
             <div id="resultArea" class="result-area">
-                <p>コマンドを入力してください。システムが自動的に適切な操作画面を生成します。</p>
+                <div style="text-align: center; padding: 40px; color: #6c757d;">
+                    <h4>👋 ようこそ！</h4>
+                    <p>上記の入力欄にコマンドを入力してください。<br>
+                    システムが自動的に適切な操作画面を生成します。</p>
+                </div>
             </div>
         </div>
         
         <script>
-            async function executeCommand() {
+            // LLM設定（設定ファイルから読み込み）
+            const llmConfigs = {llm_js_config};
+            
+            // LLM選択時の状態更新
+            document.getElementById('llmSelect').addEventListener('change', function() {{
+                updateLLMStatus();
+            }});
+            
+            function updateLLMStatus() {{
+                const selectedValue = document.getElementById('llmSelect').value;
+                const selectedOption = document.getElementById('llmSelect').options[document.getElementById('llmSelect').selectedIndex];
+                
+                const provider = selectedOption.getAttribute('data-provider');
+                const model = selectedOption.getAttribute('data-model');
+                const color = selectedOption.getAttribute('data-color');
+                const description = selectedOption.getAttribute('data-description');
+                
+                const indicator = document.getElementById('llmIndicator');
+                const status = document.getElementById('llmStatus');
+                const descElement = document.getElementById('llmDescription');
+                
+                indicator.className = `llm-indicator ${{color}}`;
+                status.textContent = `現在のLLM: ${{selectedOption.textContent.replace(/^[🦙🤖🧠]\\s*/, '')}}`;
+                descElement.textContent = description ? `- ${{description}}` : '';
+            }}
+            
+            async function executeCommand() {{
                 const command = document.getElementById('commandInput').value;
-                if (!command.trim()) {
+                const selectedLLM = document.getElementById('llmSelect').value;
+                const selectedOption = document.getElementById('llmSelect').options[document.getElementById('llmSelect').selectedIndex];
+                
+                if (!command.trim()) {{
                     alert('コマンドを入力してください');
                     return;
-                }
+                }}
                 
-                try {
-                    const response = await fetch('/api/agent/chat', {
+                // ボタンを無効化
+                const submitBtn = document.getElementById('submitBtn');
+                const originalText = submitBtn.textContent;
+                submitBtn.disabled = true;
+                submitBtn.textContent = '処理中...';
+                
+                // 実行中の状態を表示
+                document.getElementById('resultArea').innerHTML = `
+                    <div class="loading">
+                        <h4 style="margin-bottom: 15px;">🔄 処理中...</h4>
+                        <div style="font-size: 16px; color: #495057; margin-bottom: 8px;">LLM: ${{selectedOption.textContent}}</div>
+                        <div style="font-size: 14px; color: #6c757d; margin-bottom: 30px;">コマンド: "${{command}}"</div>
+                        <div class="spinner"></div>
+                        <div style="margin-top: 20px; font-size: 14px; color: #999;">
+                            AIが応答を生成中です...
+                        </div>
+                    </div>
+                `;
+                
+                try {{
+                    const response = await fetch('/api/agent/chat', {{
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: command })
-                    });
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ 
+                            message: command,
+                            llm_type: selectedLLM
+                        }})
+                    }});
+                    
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! status: ${{response.status}}`);
+                    }}
                     
                     const result = await response.json();
                     
-                    // HTMLコンテンツがある場合は表示、そうでなければテキスト応答を表示
-                    if (result.html_content) {
-                        document.getElementById('resultArea').innerHTML = result.html_content;
-                    } else {
-                        document.getElementById('resultArea').innerHTML = '<pre>' + result.response + '</pre>';
-                    }
+                    // 結果を表示
+                    let resultHTML = '';
                     
+                    // LLM使用情報を表示
+                    if (result.llm_type_used) {{
+                        const usedConfig = llmConfigs.find(config => config.value === result.llm_type_used);
+                        const llmInfo = usedConfig ? usedConfig.label : result.llm_type_used;
+                        resultHTML += `<div class="llm-info">
+                            <strong>🤖 使用されたLLM:</strong> ${{llmInfo}}
+                            ${{result.llm_info && result.llm_info.description ? `<br><small>${{result.llm_info.description}}</small>` : ''}}
+                        </div>`;
+                    }}
+                    
+                    // HTMLコンテンツがある場合は表示、そうでなければテキスト応答を表示
+                    if (result.html_content) {{
+                        resultHTML += result.html_content;
+                    }} else {{
+                        resultHTML += `<div style="padding: 20px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef;">
+                            <pre style="white-space: pre-wrap; font-family: inherit; margin: 0; line-height: 1.6;">${{result.response}}</pre>
+                        </div>`;
+                    }}
+                    
+                    document.getElementById('resultArea').innerHTML = resultHTML;
                     document.getElementById('commandInput').value = '';
                     
-                } catch (error) {
+                }} catch (error) {{
                     console.error('Error:', error);
-                    alert('エラーが発生しました: ' + error.message);
-                }
-            }
+                    document.getElementById('resultArea').innerHTML = `
+                        <div class="error">
+                            <h4 style="margin-top: 0;">❌ エラーが発生しました</h4>
+                            <p><strong>詳細:</strong> ${{error.message}}</p>
+                            <p style="margin-bottom: 0; font-size: 14px;">ネットワーク接続やサーバーの状態を確認してください。</p>
+                        </div>
+                    `;
+                }} finally {{
+                    // ボタンを再有効化
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }}
+            }}
             
             // Enterキーでコマンド実行
-            document.getElementById('commandInput').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
+            document.getElementById('commandInput').addEventListener('keypress', function(e) {{
+                if (e.key === 'Enter' && !document.getElementById('submitBtn').disabled) {{
                     executeCommand();
-                }
-            });
+                }}
+            }});
+            
+            // 初期状態の設定
+            updateLLMStatus();
         </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html)
+
+@router.get("/llm-config")
+async def get_llm_config():
+    """LLM設定情報を取得するAPI"""
+    return {
+        "models": llm_config.get_all_models(),
+        "default_model": llm_config.get_default_model(),
+        "provider_settings": llm_config._config_cache.get("provider_settings", {})
+    }
+
+@router.post("/llm-config/reload")
+async def reload_llm_config():
+    """LLM設定を再読み込み"""
+    llm_config.reload_config()
+    return {"message": "LLM設定が再読み込みされました"}

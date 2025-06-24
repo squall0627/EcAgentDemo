@@ -4,24 +4,42 @@ from ai_agents.product_management_agent import ProductManagementAgent, EXAMPLE_C
 from typing import Optional
 import os
 import json
+from config.llm_config_loader import llm_config
 
 router = APIRouter()
 
 # グローバルエージェントインスタンス
 agent_instance = None
 
-def get_agent():
+def get_agent(llm_type: str = None):
+    """設定ファイルベースでエージェントインスタンスを取得または作成"""
     global agent_instance
-    if agent_instance is None:
+    
+    # デフォルトモデルを設定
+    if not llm_type:
+        llm_type = llm_config.get_default_model()
+    
+    # モデル利用可能性をチェック
+    is_available, message = llm_config.validate_model_availability(llm_type)
+    if not is_available:
+        print(f"⚠️ {message}")
+        # フォールバックモデルを使用
+        llm_type = llm_config.get_default_model()
+    
+    # エージェントが存在しない、または異なるLLMタイプの場合は再作成
+    if agent_instance is None or agent_instance.llm_type != llm_type:
         api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="OpenAI APIキーが設定されていません")
-        agent_instance = ProductManagementAgent(api_key)
+        
+        # 新しいエージェントインスタンスを作成
+        agent_instance = ProductManagementAgent(api_key, llm_type=llm_type)
+        print(f"🔄 エージェントを{llm_type}で初期化しました")
+    
     return agent_instance
 
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    llm_type: Optional[str] = "ollama"
 
 class ChatResponse(BaseModel):
     response: str
@@ -29,18 +47,29 @@ class ChatResponse(BaseModel):
     html_content: Optional[str] = None
     action_type: Optional[str] = None
     workflow_step: Optional[str] = None
+    llm_type_used: Optional[str] = None  # 実際に使用されたLLMタイプを返す
 
-@router.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
     """LangGraph商品管理エージェントとの対話"""
     try:
-        agent = get_agent()
-        response = agent.process_command(request.message, session_id=request.session_id)
+        # リクエストからllm_typeを取得（デフォルトはollama）
+        llm_type = getattr(request, 'llm_type', 'ollama')
+        
+        # llm_typeに基づいてエージェントを取得
+        agent = get_agent(llm_type)
+        
+        # コマンドを処理（llm_typeも渡す）
+        response = agent.process_command(
+            request.message, 
+            llm_type=llm_type,
+            session_id=request.session_id
+        )
         
         # 応答がJSONの場合、情報を抽出
         html_content = None
         action_type = None
         workflow_step = None
+        llm_type_used = llm_type
         
         try:
             if response.strip().startswith('{'):
@@ -48,6 +77,7 @@ async def chat_with_agent(request: ChatRequest):
                 html_content = response_data.get("html_content")
                 action_type = response_data.get("action_type")
                 workflow_step = response_data.get("current_step")
+                llm_type_used = response_data.get("llm_type_used", llm_type)
                 
                 # ユーザー向けメッセージを取得
                 response = response_data.get("message", response)
@@ -59,10 +89,15 @@ async def chat_with_agent(request: ChatRequest):
             session_id=request.session_id,
             html_content=html_content,
             action_type=action_type,
-            workflow_step=workflow_step
+            workflow_step=workflow_step,
+            llm_type_used=llm_type_used  # 使用されたLLMタイプを返す
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LangGraphエージェント処理に失敗しました: {str(e)}")
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat_with_agent_endpoint(request: ChatRequest):
+    return await chat_with_agent(request)
 
 @router.get("/examples")
 async def get_example_commands():

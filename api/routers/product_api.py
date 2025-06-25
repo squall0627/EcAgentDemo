@@ -5,6 +5,7 @@ from db.models.product import Product
 from db.database import get_db
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+from decimal import Decimal
 
 router = APIRouter()
 
@@ -52,7 +53,10 @@ def get_products(
         jancode: str = Query(None),
         stock_min: int = Query(None),
         stock_max: int = Query(None),
-        order_by: str = Query("jancode", description="Field to order by: jancode, name_zh, name_en, name_jp, category, status, stock"),
+        price_min: float = Query(None, description="最小価格フィルター"),
+        price_max: float = Query(None, description="最大価格フィルター"),
+        description: str = Query(None, description="商品説明での検索"),
+        order_by: str = Query("jancode", description="Field to order by: jancode, name_zh, name_en, name_jp, category, status, stock, price"),
         order_direction: str = Query("asc", regex="^(asc|desc)$", description="Order direction: asc or desc"),
         lang: str = Query("jp"),
         page: int = Query(1, ge=1),
@@ -75,7 +79,8 @@ def get_products(
         "name_zh": name_zh,
         "name_en": name_en,
         "name_jp": name_jp,
-        "jancode": jancode
+        "jancode": jancode,
+        "description": description
     }
     
     # Apply dynamic search filters
@@ -86,6 +91,12 @@ def get_products(
         query = query.filter(Product.stock >= stock_min)
     if stock_max is not None:
         query = query.filter(Product.stock <= stock_max)
+
+    # Add price range filters if specified
+    if price_min is not None:
+        query = query.filter(Product.price >= price_min)
+    if price_max is not None:
+        query = query.filter(Product.price <= price_max)
 
     # Apply dynamic ordering
     query = apply_dynamic_order(query, order_by, order_direction)
@@ -103,6 +114,8 @@ def get_products(
             "category": p.category,
             "status": p.status,
             "stock": p.stock,
+            "price": float(p.price) if p.price else 0.0,
+            "description": p.description,
         })
 
     return {
@@ -169,6 +182,69 @@ def update_product_stock(jancode: str, request: StockUpdateRequest, db: Session 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"在庫更新エラー: {str(e)}")
+
+# 新しい価格更新API
+class PriceUpdateRequest(BaseModel):
+    jancode: str
+    price: float
+
+@router.put("/products/{jancode}/price")
+def update_product_price(jancode: str, request: PriceUpdateRequest, db: Session = Depends(get_db)):
+    """特定商品の価格を更新"""
+    product = db.query(Product).filter(Product.jancode == jancode).first()
+    
+    if not product:
+        raise HTTPException(status_code=404, detail=f"JANコード {jancode} の商品が見つかりません")
+    
+    if request.price < 0:
+        raise HTTPException(status_code=400, detail="価格は0以上である必要があります")
+    
+    try:
+        old_price = float(product.price) if product.price else 0.0
+        product.price = Decimal(str(request.price))
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"{product.name_jp} (JAN: {jancode}) の価格を ¥{old_price:,.2f} から ¥{request.price:,.2f} に更新しました",
+            "jancode": jancode,
+            "old_price": old_price,
+            "new_price": request.price,
+            "product_name": product.name_jp
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"価格更新エラー: {str(e)}")
+
+# 新しい商品説明更新API
+class DescriptionUpdateRequest(BaseModel):
+    jancode: str
+    description: str
+
+@router.put("/products/{jancode}/description")
+def update_product_description(jancode: str, request: DescriptionUpdateRequest, db: Session = Depends(get_db)):
+    """特定商品の説明を更新"""
+    product = db.query(Product).filter(Product.jancode == jancode).first()
+    
+    if not product:
+        raise HTTPException(status_code=404, detail=f"JANコード {jancode} の商品が見つかりません")
+    
+    try:
+        old_description = product.description or ""
+        product.description = request.description
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"{product.name_jp} (JAN: {jancode}) の商品説明を更新しました",
+            "jancode": jancode,
+            "old_description": old_description,
+            "new_description": request.description,
+            "product_name": product.name_jp
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"商品説明更新エラー: {str(e)}")
 
 class CategoryUpdateRequest(BaseModel):
     jancode: str
@@ -246,54 +322,61 @@ def bulk_update_stock(request: BulkStockUpdateRequest, db: Session = Depends(get
         db.rollback()
         raise HTTPException(status_code=500, detail=f"一括在庫更新エラー: {str(e)}")
 
+# 新しい一括価格更新API
+class BulkPriceUpdateRequest(BaseModel):
+    products: List[Dict[str, Any]]
+
+@router.put("/products/bulk/price")
+def bulk_update_price(request: BulkPriceUpdateRequest, db: Session = Depends(get_db)):
+    """複数商品の価格を一括更新"""
+    results = []
+    errors = []
+    
+    try:
+        for item in request.products:
+            jancode = item.get('jancode')
+            price = item.get('price')
+            
+            if not jancode or price is None:
+                errors.append(f"無効なデータ: {item}")
+                continue
+                
+            if price < 0:
+                errors.append(f"商品 {jancode}: 価格は0以上である必要があります")
+                continue
+            
+            product = db.query(Product).filter(Product.jancode == jancode).first()
+            if not product:
+                errors.append(f"商品 {jancode} が見つかりません")
+                continue
+            
+            old_price = float(product.price) if product.price else 0.0
+            product.price = Decimal(str(price))
+            results.append({
+                "jancode": jancode,
+                "product_name": product.name_jp,
+                "old_price": old_price,
+                "new_price": price,
+                "message": f"{product.name_jp} (JAN: {jancode}): ¥{old_price:,.2f} → ¥{price:,.2f}"
+            })
+        
+        if results:
+            db.commit()
+        
+        return {
+            "success": True,
+            "updated_count": len(results),
+            "updated_products": results,
+            "errors": errors
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"一括価格更新エラー: {str(e)}")
+
 class AutoReplenishRequest(BaseModel):
     threshold: int = 10
     replenish_amount: int = 100
-
-# @router.post("/products/auto-replenish")
-# def auto_replenish_stock(request: AutoReplenishRequest, db: Session = Depends(get_db)):
-#     """低在庫商品を自動補充"""
-#     try:
-#         # 低在庫商品を検索
-#         low_stock_products = db.query(Product).filter(
-#             Product.stock < request.threshold,
-#             Product.status == 'published'
-#         ).all()
-#
-#         if not low_stock_products:
-#             return {
-#                 "success": True,
-#                 "message": f"在庫が{request.threshold}未満の商品は見つかりませんでした",
-#                 "updated_count": 0,
-#                 "updated_products": []
-#             }
-#
-#         updated_products = []
-#         for product in low_stock_products:
-#             old_stock = product.stock
-#             product.stock = request.replenish_amount
-#             updated_products.append({
-#                 "jancode": product.jancode,
-#                 "product_name": product.name_jp,
-#                 "old_stock": old_stock,
-#                 "new_stock": request.replenish_amount
-#             })
-#
-#         db.commit()
-#
-#         return {
-#             "success": True,
-#             "message": f"閾値{request.threshold}を下回る{len(updated_products)}商品を自動補充しました",
-#             "threshold": request.threshold,
-#             "replenish_amount": request.replenish_amount,
-#             "updated_count": len(updated_products),
-#             "updated_products": updated_products
-#         }
-#
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"自動補充エラー: {str(e)}")
-
 
 @router.post("/products/unpublish")
 def unpublish_products(data: PublishRequest, db: Session = Depends(get_db)):
@@ -341,6 +424,15 @@ def validate_product_for_publish(jancode: str, db: Session = Depends(get_db)):
             "field": "stock",
             "current_value": product.stock
         })
+
+    # 価格チェック
+    if not product.price or product.price <= 0:
+        issues.append({
+            "type": "price",
+            "message": "商品価格が設定されていないか0円です",
+            "field": "price",
+            "current_value": float(product.price) if product.price else 0.0
+        })
     
     return {
         "jancode": jancode,
@@ -352,6 +444,8 @@ def validate_product_for_publish(jancode: str, db: Session = Depends(get_db)):
             "name_en": product.name_en,
             "category": product.category,
             "stock": product.stock,
+            "price": float(product.price) if product.price else 0.0,
+            "description": product.description,
             "status": product.status
         },
         "issues": issues

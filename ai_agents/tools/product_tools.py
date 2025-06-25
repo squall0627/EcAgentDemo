@@ -14,17 +14,6 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # 输入模型定义
 class ProductSearchInput(BaseModel):
-    # status: Optional[str] = Field(default=None, description="Product publication status (published/unpublished)")
-    # category: Optional[str] = Field(default=None, description="Product category")
-    # name_zh: Optional[str] = Field(default=None, description="Chinese product name")
-    # name_en: Optional[str] = Field(default=None, description="English product name")
-    # name_jp: Optional[str] = Field(default=None, description="Japanese product name")
-    # jancode: Optional[str] = Field(default=None, description="Product JAN code")
-    # stock_min: Optional[int] = Field(default=None, description="Minimum stock quantity")
-    # stock_max: Optional[int] = Field(default=None, description="Maximum stock quantity")
-    # order_by: Optional[str] = Field(default="jancode", description="Sort field")
-    # order_direction: Optional[str] = Field(default="asc", description="Sort direction (asc/desc)")
-    # limit: Optional[int] = Field(default=10, description="Result limit count")
     status: str | None = None
     category: str | None = None
     name_zh: str | None = None
@@ -33,6 +22,9 @@ class ProductSearchInput(BaseModel):
     jancode: str | None = None
     stock_min: int | None = None
     stock_max: int | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    description: str | None = None
     order_by: str | None = "jancode"
     order_direction: str | None = "asc"
     limit: int | None = 10
@@ -41,6 +33,16 @@ class StockUpdateInput(BaseModel):
     jancode: str = Field(description="更新する商品のJANコード")
     stock_amount: int = Field(description="新しい在庫数")
 
+# 新しい価格更新用の入力モデル
+class PriceUpdateInput(BaseModel):
+    jancode: str = Field(description="更新する商品のJANコード")
+    price: float = Field(description="新しい価格")
+
+# 新しい商品説明更新用の入力モデル
+class DescriptionUpdateInput(BaseModel):
+    jancode: str = Field(description="更新する商品のJANコード")
+    description: str = Field(description="新しい商品説明")
+
 class CategoryUpdateInput(BaseModel):
     jancode: str = Field(description="更新する商品のJANコード")
     category: str = Field(description="新しいカテゴリー")
@@ -48,11 +50,15 @@ class CategoryUpdateInput(BaseModel):
 class BulkStockUpdateInput(BaseModel):
     products: List[Dict[str, Any]] = Field(description="一括在庫更新のリスト")
 
+# 新しい一括価格更新用の入力モデル
+class BulkPriceUpdateInput(BaseModel):
+    products: List[Dict[str, Any]] = Field(description="一括価格更新のリスト")
+
 class ValidateProductInput(BaseModel):
     jancode: str = Field(description="検証する商品のJANコード")
 
 class GenerateHtmlInput(BaseModel):
-    page_type: str = Field(description="生成するページタイプ: product_list(商品明細一覧画面を生成)/category_form(商品カテゴリー管理画面を生成)/stock_form(在庫管理画面を生成)/error_page(エラー発生時のエラーメッセージ画面を生成)")
+    page_type: str = Field(description="生成するページタイプ: product_list(商品明細一覧画面を生成)/category_form(商品カテゴリー管理画面を生成)/stock_form(在庫管理画面を生成)/price_form(価格管理画面を生成)/description_form(商品説明管理画面を生成)/error_page(エラー発生時のエラーメッセージ画面を生成)")
     data: Optional[Dict[str, Any]] = Field(default=None, description="ページ生成に必要なデータ")
 
 class PublishProductsInput(BaseModel):
@@ -68,6 +74,9 @@ def search_products_tool_fn(jancode: str | None = None, status: str | None = Non
                             name_jp: str | None = None,
                             stock_min: int | None = None,
                             stock_max: int | None = None,
+                            price_min: float | None = None,
+                            price_max: float | None = None,
+                            description: str | None = None,
                             order_by: str | None = "jancode",
                             order_direction: str | None = "asc",
                             limit: int | None = 10) -> str:
@@ -81,6 +90,9 @@ def search_products_tool_fn(jancode: str | None = None, status: str | None = Non
     print(f"name_jp: {name_jp}")
     print(f"stock_min: {stock_min}")
     print(f"stock_max: {stock_max}")
+    print(f"price_min: {price_min}")
+    print(f"price_max: {price_max}")
+    print(f"description: {description}")
     print(f"order_by: {order_by}")
     print(f"order_direction: {order_direction}")
     print(f"limit: {limit}")
@@ -96,6 +108,9 @@ def search_products_tool_fn(jancode: str | None = None, status: str | None = Non
             "name_jp": name_jp,
             "stock_min": stock_min,
             "stock_max": stock_max,
+            "price_min": price_min,
+            "price_max": price_max,
+            "description": description,
             "order_by": order_by,
             "order_direction": order_direction,
             "limit": limit
@@ -125,34 +140,11 @@ def search_products_tool_fn(jancode: str | None = None, status: str | None = Non
 
 search_products_tool = Tool(
     name="search_products",
-    description="商品検索ツール - 自然言語で商品を検索・フィルタリング",
+    description="商品検索ツール - 自然言語で商品を検索・フィルタリング（価格範囲、商品説明での検索も対応）",
     func=search_products_tool_fn,
     args_schema=ProductSearchInput,
-    return_direct=False  # 如需直接返回结果而不让模型解释，可设为 True
+    return_direct=False
 )
-# class SearchProductsTool(BaseTool):
-#     name: str = "search_products"
-#     description: str = "Product search tool - Search and filter products using natural language queries"
-#     args_schema: Type[BaseModel] = ProductSearchInput
-#
-#     def _run(self, **kwargs) -> str:
-#         try:
-#             # 空のパラメータを除去
-#             params = {k: v for k, v in kwargs.items() if v is not None}
-#
-#             response = requests.get(f"{API_BASE_URL}/api/product/products", params=params)
-#
-#             if response.status_code == 200:
-#                 return json.dumps(response.json(), ensure_ascii=False, indent=2)
-#             else:
-#                 return json.dumps({
-#                     "error": f"検索APIエラー: {response.status_code}",
-#                     "detail": response.text
-#                 }, ensure_ascii=False)
-#         except Exception as e:
-#             return json.dumps({
-#                 "error": f"検索エラー: {str(e)}"
-#             }, ensure_ascii=False)
 
 class UpdateStockTool(BaseTool):
     name: str = "update_stock"
@@ -163,7 +155,7 @@ class UpdateStockTool(BaseTool):
         try:
             response = requests.put(
                 f"{API_BASE_URL}/api/product/products/{jancode}/stock",
-                json={"stock": stock_amount}
+                json={"jancode": jancode, "stock_amount": stock_amount}
             )
             
             if response.status_code == 200:
@@ -178,6 +170,56 @@ class UpdateStockTool(BaseTool):
                 "error": f"在庫更新エラー: {str(e)}"
             }, ensure_ascii=False)
 
+# 新しい価格更新ツール
+class UpdatePriceTool(BaseTool):
+    name: str = "update_price"
+    description: str = "商品価格更新ツール"
+    args_schema: Type[BaseModel] = PriceUpdateInput
+    
+    def _run(self, jancode: str, price: float) -> str:
+        try:
+            response = requests.put(
+                f"{API_BASE_URL}/api/product/products/{jancode}/price",
+                json={"jancode": jancode, "price": price}
+            )
+            
+            if response.status_code == 200:
+                return json.dumps(response.json(), ensure_ascii=False, indent=2)
+            else:
+                return json.dumps({
+                    "error": f"価格更新APIエラー: {response.status_code}",
+                    "detail": response.text
+                }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({
+                "error": f"価格更新エラー: {str(e)}"
+            }, ensure_ascii=False)
+
+# 新しい商品説明更新ツール
+class UpdateDescriptionTool(BaseTool):
+    name: str = "update_description"
+    description: str = "商品説明更新ツール"
+    args_schema: Type[BaseModel] = DescriptionUpdateInput
+    
+    def _run(self, jancode: str, description: str) -> str:
+        try:
+            response = requests.put(
+                f"{API_BASE_URL}/api/product/products/{jancode}/description",
+                json={"jancode": jancode, "description": description}
+            )
+            
+            if response.status_code == 200:
+                return json.dumps(response.json(), ensure_ascii=False, indent=2)
+            else:
+                return json.dumps({
+                    "error": f"商品説明更新APIエラー: {response.status_code}",
+                    "detail": response.text
+                }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({
+                "error": f"商品説明更新エラー: {str(e)}"
+            }, ensure_ascii=False)
+
 class UpdateCategoryTool(BaseTool):
     name: str = "update_category"
     description: str = "商品カテゴリー更新ツール"
@@ -187,7 +229,7 @@ class UpdateCategoryTool(BaseTool):
         try:
             response = requests.put(
                 f"{API_BASE_URL}/api/product/products/{jancode}/category",
-                json={"category": category}
+                json={"jancode": jancode, "category": category}
             )
             
             if response.status_code == 200:
@@ -210,8 +252,8 @@ class BulkUpdateStockTool(BaseTool):
     def _run(self, products: List[Dict[str, Any]]) -> str:
         try:
             response = requests.put(
-                f"{API_BASE_URL}/api/product/products/bulk-stock",
-                json={"updates": products}
+                f"{API_BASE_URL}/api/product/products/bulk/stock",
+                json={"products": products}
             )
             
             if response.status_code == 200:
@@ -226,9 +268,34 @@ class BulkUpdateStockTool(BaseTool):
                 "error": f"一括在庫更新エラー: {str(e)}"
             }, ensure_ascii=False)
 
-class ValidateProductTool(BaseTool):
-    name: str = "validate_product_status"
-    description: str = "商品の棚上げ前提条件を検証します"
+# 新しい一括価格更新ツール
+class BulkUpdatePriceTool(BaseTool):
+    name: str = "bulk_update_price"
+    description: str = "商品価格一括更新ツール"
+    args_schema: Type[BaseModel] = BulkPriceUpdateInput
+    
+    def _run(self, products: List[Dict[str, Any]]) -> str:
+        try:
+            response = requests.put(
+                f"{API_BASE_URL}/api/product/products/bulk/price",
+                json={"products": products}
+            )
+            
+            if response.status_code == 200:
+                return json.dumps(response.json(), ensure_ascii=False, indent=2)
+            else:
+                return json.dumps({
+                    "error": f"一括価格更新APIエラー: {response.status_code}",
+                    "detail": response.text
+                }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({
+                "error": f"一括価格更新エラー: {str(e)}"
+            }, ensure_ascii=False)
+
+class ValidateCanPublishProductTool(BaseTool):
+    name: str = "validate_can_publish_product"
+    description: str = "商品を棚上げ操作する前に、棚上げできるかをチェックするツール。"
     args_schema: Type[BaseModel] = ValidateProductInput
     
     def _run(self, jancode: str) -> str:
@@ -375,11 +442,43 @@ page_type:
             ]
             default: null
           }
+          price: {
+            anyOf: [
+              0
+              :
+              {
+                type: "decimal"
+              }
+              1
+              :
+              {
+                type: null
+              }
+            ]
+            default: null
+          }
+          description: {
+            anyOf: [
+              0
+              :
+              {
+                type: "string"
+              }
+              1
+              :
+              {
+                type: null
+              }
+            ]
+            default: null
+          }
         }
       ]
     }
-- category_form　(商品カテゴリー管理画面を生成)
+- category_form　(商品カテゴリー管理画面を生成)  
 - stock_form　(在庫管理画面を生成)
+- price_form　(価格管理画面を生成)
+- description_form　(商品説明管理画面を生成)
 - error_page　(エラー発生時のエラーメッセージ画面を生成)"""
     args_schema: Type[BaseModel] = GenerateHtmlInput
     
@@ -458,6 +557,3 @@ class UnpublishProductsTool(BaseTool):
             return json.dumps({
                 "error": f"棚下げエラー: {str(e)}"
             }, ensure_ascii=False)
-
-# if __name__ == "__main__":
-#     print(search_products_tool_fn({"jancode": "1000000000001"}))

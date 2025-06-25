@@ -13,12 +13,16 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from ai_agents.tools.product_tools import (
     UpdateStockTool,
+    UpdatePriceTool,
+    UpdateDescriptionTool,
     UpdateCategoryTool,
     BulkUpdateStockTool,
-    ValidateProductTool,
+    BulkUpdatePriceTool,
+    ValidateCanPublishProductTool,
     GenerateHtmlTool,
     PublishProductsTool,
-    UnpublishProductsTool, search_products_tool
+    UnpublishProductsTool, 
+    search_products_tool
 )
 from config.llm_config_loader import llm_config
 
@@ -82,9 +86,12 @@ class ProductManagementAgent:
         self.tools = [
             search_products_tool,
             UpdateStockTool(),
+            UpdatePriceTool(),
+            UpdateDescriptionTool(),
             UpdateCategoryTool(),
             BulkUpdateStockTool(),
-            ValidateProductTool(),
+            BulkUpdatePriceTool(),
+            ValidateCanPublishProductTool(),
             GenerateHtmlTool(),
             PublishProductsTool(),
             UnpublishProductsTool()
@@ -226,19 +233,29 @@ class ProductManagementAgent:
 1. **商品検索**: 自然言語で商品を検索・フィルタリング
 2. **商品棚上げ・棚下げ管理**: 商品の棚上げ・棚下げ状態を管理
 3. **商品在庫管理**: 商品の在庫状態を管理
-4. **動的HTML生成**: 操作に応じた管理画面を自動生成
-5. **エラー処理と誘導**: 問題解決まで段階的にサポート
+4. **商品価格管理**: 商品の価格設定・更新を管理（個別・一括対応）
+5. **商品説明管理**: 商品の説明文を管理・更新
+6. **動的HTML生成**: 操作に応じた管理画面を自動生成
+7. **エラー処理と誘導**: 問題解決まで段階的にサポート
 
 ## 商品棚上げの前提条件チェック：
 商品を棚上げする前に、必ず以下の条件を確認してください：
 - ✅ 商品カテゴリーが設定されている（null または空文字列ではない）
 - ✅ 商品在庫が0より大きい
+- ✅ 商品価格が設定されている（0より大きい）
 
 ## HTML生成ルール：
 - 商品リスト表示：検索結果を表形式で表示、各商品に操作ボタン付き
 - カテゴリー設定画面：フォーム形式でカテゴリー選択・入力
 - 在庫管理画面：数値入力フォームで在庫数量設定
+- 価格管理画面：数値入力フォームで価格設定（通貨表示対応）
+- 商品説明管理画面：テキストエリアで説明文編集
 - エラー画面：問題点を明示し、解決方法を提示
+
+## 価格に関する注意事項：
+- 価格は必ず0以上の値を設定してください
+- 価格表示は通貨形式（¥1,234.56）で表示
+- 一括価格更新では、無効な価格値をスキップして処理続行
 
 ## 重要な動作原則：
 1. ユーザーが問題解決まで段階的にサポート
@@ -246,7 +263,7 @@ class ProductManagementAgent:
 
 ## 応答形式：
 - JSON形式で構造化された応答
-- HTML生成が必要な場合は "html_content" フィールドに含める
+- HTML生成が必要な場合は "html_content" フィールドに含め、直接に画面にレンダリングしてください
 - エラーメッセージは "error" フィールドに日本語で記載
 - 次のアクション提案は "next_actions" フィールドに含める
 
@@ -338,11 +355,15 @@ EXAMPLE_COMMANDS = [
     # 直接実行タイプ
     "JAN123456789の在庫を50に変更",
     "商品987654321のカテゴリーを飲料に変更",
+    "JAN123456789の価格を1500円に設定",
+    "商品987654321の商品説明を更新",
 
     # 検索後実行タイプ
     "すべてのコーヒー商品の在庫を100に変更",
     "在庫不足の商品をすべて棚下げ",
     "飲料カテゴリーの商品をすべて棚上げ",
+    "価格が1000円以下の商品を検索",
+    "説明文に「限定」を含む商品を検索",
 
     # 検証後実行タイプ
     "商品ABC123を棚上げ",
@@ -351,7 +372,9 @@ EXAMPLE_COMMANDS = [
     # フォームが必要なタイプ
     "商品在庫を修正",
     "商品情報を更新",
-    "商品管理"
+    "商品管理",
+    "商品価格を設定",
+    "商品説明を編集"
 ]
 
 # 使用例
@@ -365,5 +388,5 @@ if __name__ == "__main__":
     print("利用可能なLLM:", agent.get_available_llms())
     
     # テスト実行
-    result = agent.process_command("JAN code 1000000000001の商品を検索し、かつ商品詳細一覧画面を生成してください。")
+    result = agent.process_command("JAN code 1000000000001の商品を検索し、商品詳細一覧画面を生成してください。")
     print(result)

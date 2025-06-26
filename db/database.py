@@ -3,24 +3,24 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Use SQLite in-memory database
-SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"  # 创建本地文件数据库
+# SQLiteインメモリデータベースを使用
+SQLALCHEMY_DATABASE_URL = "sqlite:///./app.db"  # ローカルファイルデータベースを作成
 
-# Create the SQLAlchemy engine for in-memory SQLite
+# インメモリSQLite用のSQLAlchemyエンジンを作成
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    echo=True,  # Set to False in production
-    connect_args={"check_same_thread": False},  # Needed for SQLite
+    echo=True,  # 本番環境ではFalseに設定
+    connect_args={"check_same_thread": False},  # SQLiteに必要
 )
 
-# Create SessionLocal class
+# SessionLocalクラスを作成
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create Base class
+# Baseクラスを作成
 Base = declarative_base()
 
 
-# Dependency to get DB session
+# DBセッションを取得する依存関数
 def get_db():
     db = SessionLocal()
     try:
@@ -29,6 +29,6 @@ def get_db():
         db.close()
 
 
-# Add this function to create all tables
+# すべてのテーブルを作成する関数
 def init_db():
     Base.metadata.create_all(bind=engine)

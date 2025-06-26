@@ -17,21 +17,21 @@ def localize_name(product, lang: str):
     return product.name_zh
 
 def apply_search_filters(query, search_conditions: Dict[str, Any]):
-    """Apply dynamic search conditions to the query"""
+    """クエリに動的な検索条件を適用"""
     for field, value in search_conditions.items():
         if value is not None and value != "":
             if hasattr(Product, field):
                 column = getattr(Product, field)
                 if isinstance(value, str):
-                    # Use ilike for string fields for case-insensitive partial matching
+                    # 文字列フィールドには大文字小文字を区別しない部分一致を使用
                     query = query.filter(column.ilike(f"%{value}%"))
                 else:
-                    # Use exact match for non-string fields
+                    # 非文字列フィールドには完全一致を使用
                     query = query.filter(column == value)
     return query
 
 def apply_dynamic_order(query, order_by: str, order_direction: str):
-    """Apply dynamic ordering to the query"""
+    """クエリに動的な並び順を適用"""
     if order_by and hasattr(Product, order_by):
         column = getattr(Product, order_by)
         if order_direction.lower() == "desc":
@@ -39,7 +39,7 @@ def apply_dynamic_order(query, order_by: str, order_direction: str):
         else:
             query = query.order_by(column)
     else:
-        # Default ordering (required by SQL Server for pagination)
+        # デフォルトの並び順（ページネーションにはSQL Serverで必要）
         query = query.order_by(Product.jancode)
     return query
 
@@ -56,25 +56,25 @@ def get_products(
         price_min: float = Query(None, description="最小価格フィルター"),
         price_max: float = Query(None, description="最大価格フィルター"),
         description: str = Query(None, description="商品説明での検索"),
-        order_by: str = Query("jancode", description="Field to order by: jancode, name_zh, name_en, name_jp, category, status, stock, price"),
-        order_direction: str = Query("asc", regex="^(asc|desc)$", description="Order direction: asc or desc"),
+        order_by: str = Query("jancode", description="並び順フィールド: jancode, name_zh, name_en, name_jp, category, status, stock, price"),
+        order_direction: str = Query("asc", regex="^(asc|desc)$", description="並び順方向: asc または desc"),
         lang: str = Query("jp"),
         page: int = Query(1, ge=1),
         limit: int = Query(20, le=100),
         db: Session = Depends(get_db)
 ):
-    # Start with base query
+    # 基本クエリから開始
     query = db.query(Product)
 
-    # Add status filter if specified
+    # ステータスフィルターを指定されている場合は追加
     if status:
         query = query.filter(Product.status == status)
     
-    # Add category filter if specified
+    # カテゴリーフィルターを指定されている場合は追加
     if category:
         query = query.filter(Product.category == category)
     
-    # Collect dynamic search conditions
+    # 動的な検索条件を収集
     search_conditions = {
         "name_zh": name_zh,
         "name_en": name_en,
@@ -83,27 +83,27 @@ def get_products(
         "description": description
     }
     
-    # Apply dynamic search filters
+    # 動的な検索フィルターを適用
     query = apply_search_filters(query, search_conditions)
     
-    # Add stock range filters if specified
+    # 在庫範囲フィルターを指定されている場合は追加
     if stock_min is not None:
         query = query.filter(Product.stock >= stock_min)
     if stock_max is not None:
         query = query.filter(Product.stock <= stock_max)
 
-    # Add price range filters if specified
+    # 価格範囲フィルターを指定されている場合は追加
     if price_min is not None:
         query = query.filter(Product.price >= price_min)
     if price_max is not None:
         query = query.filter(Product.price <= price_max)
 
-    # Apply dynamic ordering
+    # 動的な並び順を適用
     query = apply_dynamic_order(query, order_by, order_direction)
 
     total = query.count()
     
-    # Apply pagination
+    # ページネーションを適用
     products = query.offset((page - 1) * limit).limit(limit).all()
 
     result = []

@@ -3,10 +3,7 @@ import json
 from typing import TypedDict, Annotated, List, Dict, Any, Optional
 
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
 from langgraph.constants import START
-from langfuse import Langfuse
-from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -24,21 +21,10 @@ from ai_agents.tools.product_tools import (
     UnpublishProductsTool, 
     search_products_tool
 )
-from config.llm_config_loader import llm_config
+from llm.llm_handler import LLMHandler
+from utils.langfuse_handler import LangfuseHandler
 
 load_dotenv()
-
-# Langfuse V3 インポート
-LANGFUSE_AVAILABLE = False
-
-try:
-    from langfuse.langchain import CallbackHandler
-    from langfuse import observe
-    LANGFUSE_AVAILABLE = True
-    print("✅ Langfuse V3 CallbackHandler正常にインポートされました")
-except ImportError as e:
-    print(f"❌ Langfuse V3 CallbackHandlerが利用できません: {e}")
-    LANGFUSE_AVAILABLE = False
 
 # LangGraph状態定義 - より柔軟な状態管理
 class AgentState(TypedDict):
@@ -54,33 +40,12 @@ class ProductManagementAgent:
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """柔軟な商品管理エージェント - 設定ファイルベースの動的LLM選択"""
         self.api_key = api_key
-        self.llm_type = llm_type or llm_config.get_default_model()
-        self.use_langfuse = use_langfuse and LANGFUSE_AVAILABLE
         
-        # Langfuse V3 初期化
-        self.langfuse_handler = None
-        if self.use_langfuse:
-            try:
-                public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-                secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-                host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-                if public_key and secret_key:
-                    Langfuse(
-                        public_key=public_key,
-                        secret_key=secret_key,
-                        host=host,
-                    )
-                    self.langfuse_handler = CallbackHandler()
-                    print("✅ Langfuse V3が正常に初期化されました")
-                else:
-                    print("⚠️  Langfuse認証情報が見つかりません")
-                    self.use_langfuse = False
-            except Exception as e:
-                print(f"❌ Langfuse初期化に失敗しました: {e}")
-                self.use_langfuse = False
-
-        # 動的LLM初期化
-        self.llm = self._initialize_llm()
+        # LLMHandlerを使用してLLM管理を委譲
+        self.llm_handler = LLMHandler(api_key, llm_type)
+        
+        # Langfuse V3 初期化 - LangfuseHandlerを使用
+        self.langfuse_handler = LangfuseHandler(use_langfuse=use_langfuse)
         
         # ツール初期化
         self.tools = [
@@ -101,130 +66,33 @@ class ProductManagementAgent:
         self.tool_map = {tool.name: tool for tool in self.tools}
         
         # ツール付きLLM
-        self.llm_with_tools = self.llm.bind_tools(self.tools)
+        self.llm_with_tools = self.llm_handler.get_llm_with_tools(self.tools)
         self.tool_node = ToolNode(self.tools)
         
         # 柔軟なワークフローを構築
         self.graph = self._build_flexible_graph()
 
-    def _initialize_llm(self):
-        """設定ファイルに基づいてLLMを初期化"""
-        # モデル利用可能性を検証
-        is_available, message = llm_config.validate_model_availability(self.llm_type)
-        if not is_available:
-            print(f"⚠️ {message}")
-            # フォールバックモデルを使用
-            self.llm_type = llm_config.get_default_model()
-            print(f"🔄 フォールバックモデル {self.llm_type} を使用します")
-        
-        model_config = llm_config.get_model_config(self.llm_type)
-        if not model_config:
-            raise ValueError(f"モデル設定が見つかりません: {self.llm_type}")
-        
-        provider = model_config["provider"]
-        model_name = model_config["model"]
-        temperature = model_config.get("temperature", 0.7)
-        
-        try:
-            if provider == "ollama":
-                print(f"🦙 Ollama LLM ({model_name}) を初期化中...")
-                return ChatOllama(
-                    model=model_name,
-                    base_url=model_config.get("base_url", "http://localhost:11434"),
-                    temperature=temperature,
-                )
-            elif provider == "openai":
-                print(f"🤖 OpenAI LLM ({model_name}) を初期化中...")
-                return ChatOpenAI(
-                    openai_api_key=self.api_key,
-                    model=model_name,
-                    temperature=temperature
-                )
-            elif provider == "anthropic":
-                print(f"🧠 Anthropic LLM ({model_name}) を初期化中...")
-                try:
-                    from langchain_anthropic import ChatAnthropic
-                    return ChatAnthropic(
-                        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-                        model=model_name,
-                        temperature=temperature
-                    )
-                except ImportError:
-                    print("❌ langchain_anthropicがインストールされていません")
-                    return self._fallback_to_default()
-            else:
-                print(f"❌ 未対応のプロバイダー: {provider}")
-                return self._fallback_to_default()
-                
-        except Exception as e:
-            print(f"❌ LLM初期化に失敗しました: {e}")
-            return self._fallback_to_default()
-
-    def _fallback_to_default(self):
-        """デフォルトモデルにフォールバック"""
-        default_model = llm_config.get_default_model()
-        default_config = llm_config.get_model_config(default_model)
-        
-        print(f"🔄 デフォルトモデル {default_model} にフォールバックします")
-        
-        if default_config["provider"] == "ollama":
-            return ChatOllama(
-                model=default_config["model"],
-                base_url=default_config.get("base_url", "http://localhost:11434"),
-                temperature=default_config.get("temperature", 0.7),
-            )
-        else:
-            # 最後の手段としてOpenAI
-            return ChatOpenAI(
-                openai_api_key=self.api_key,
-                model="gpt-4o-mini",
-                temperature=0.1
-            )
-
     def switch_llm(self, new_llm_type: str):
         """実行時にLLMタイプを切り替え"""
-        if new_llm_type != self.llm_type:
-            old_type = self.llm_type
-            self.llm_type = new_llm_type
-            self.llm = self._initialize_llm()
-            self.llm_with_tools = self.llm.bind_tools(self.tools)
-            
-            new_config = llm_config.get_model_config(new_llm_type)
-            if new_config:
-                print(f"✅ LLMを{old_type}から{new_config['provider']}:{new_config['model']}に切り替えました")
-            else:
-                print(f"✅ LLMを{new_llm_type}に切り替えました")
+        self.llm_handler.switch_llm(new_llm_type)
+        # ツール付きLLMも更新
+        self.llm_with_tools = self.llm_handler.get_llm_with_tools(self.tools)
 
     def get_available_llms(self):
         """利用可能なLLMのリストを取得"""
-        return [model["value"] for model in llm_config.get_all_models()]
+        return self.llm_handler.get_available_llms()
     
     def get_llm_info(self, llm_type: str = None):
         """LLM情報を取得"""
-        target_type = llm_type or self.llm_type
-        model_config = llm_config.get_model_config(target_type)
-        
-        if model_config:
-            return {
-                "type": target_type,
-                "provider": model_config.get("provider", "unknown"),
-                "model": model_config.get("model", "unknown"),
-                "temperature": model_config.get("temperature", 0.7),
-                "label": model_config.get("label", target_type),
-                "description": model_config.get("description", "")
-            }
-        else:
-            return {
-                "type": target_type,
-                "provider": "unknown",
-                "model": "unknown",
-                "temperature": 0.7,
-                "label": target_type,
-                "description": "設定が見つかりません"
-            }
+        return self.llm_handler.get_llm_info(llm_type)
+
+    @property
+    def llm_type(self):
+        """現在のLLMタイプを取得"""
+        return self.llm_handler.get_current_llm_type()
 
     def assistant(self, state: AgentState):
-        # System message
+        # システムメッセージ
         sys_msg = SystemMessage(
             content="""
 あなたはECバックオフィス商品管理の専門アシスタントです。管理者の自然言語コマンドを理解し、以下の機能を提供します：
@@ -275,80 +143,77 @@ class ProductManagementAgent:
 
     def _build_flexible_graph(self) -> StateGraph:
         """柔軟なワークフローグラフを構築"""
-        # Define the state graph
+        # 状態グラフを定義
         builder = StateGraph(AgentState)
 
-        # Define nodes: these do the work
+        # ノードを定義：これらが実際の作業を行う
         builder.add_node("assistant", self.assistant)
         builder.add_node("tools", self.tool_node)
 
-        # Define edges: these determine how the control flow moves
+        # エッジを定義：これらが制御フローの移動方法を決定する
         builder.add_edge(START, "assistant")
         builder.add_conditional_edges(
             "assistant",
-            # If the latest message requires a tool, route to tools
-            # Otherwise, provide a direct response
+            # 最新のメッセージがツールを必要とする場合、ツールにルーティング
+            # そうでなければ、直接応答を提供
             tools_condition,
         )
         builder.add_edge("tools", "assistant")
         
         return builder.compile()
-    
-    def _get_langfuse_config(self, step_name: str = None, session_id: str = None, user_id: str = None) -> Dict:
-        """Langfuse設定を取得"""
-        if self.use_langfuse and self.langfuse_handler:
-            return {"callbacks": [self.langfuse_handler],
-                    "metadata": {
-                        "langfuse.user_id": user_id,
-                        "langfuse.session_id": session_id
-                    }}
-        return {}
 
-    @observe(name="product_management_workflow")
     def process_command(self, command: str, llm_type: str = None, session_id: str = None, user_id: str = None) -> str:
         """ユーザーコマンドを処理 - 設定ベースの動的LLM切り替え対応"""
-        try:
-            # LLMタイプが指定された場合は切り替え
-            if llm_type and llm_type != self.llm_type:
-                self.switch_llm(llm_type)
-            
-            # 初期状態
-            initial_state = AgentState(
-                messages=[HumanMessage(content=command)],
-                user_input=command,
-                html_content=None,
-                error_message=None,
-                next_actions=None,
-                session_id=session_id,
-                user_id=user_id,
-            )
-            
-            # 柔軟なワークフローを実行
-            config = self._get_langfuse_config("product_management_workflow", session_id, user_id)
-            final_state = self.graph.invoke(initial_state, config=config)
-            
-            # レスポンスを構築
-            response_data = {
-                "message": final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました",
-                "html_content": final_state.get("html_content"),
-                "next_actions": final_state.get("next_actions"),
-                "llm_type_used": self.llm_type,
-                "llm_info": self.get_llm_info()
-            }
-            
-            if final_state.get("error_message"):
-                response_data["error"] = final_state["error_message"]
-            
-            return json.dumps(response_data, ensure_ascii=False, indent=2)
-            
-        except Exception as e:
-            error_msg = f"ワークフロー実行に失敗しました: {str(e)}"
-            return json.dumps({
-                "message": error_msg,
-                "error": str(e),
-                "llm_type_used": self.llm_type,
-                "llm_info": self.get_llm_info()
-            }, ensure_ascii=False)
+        
+        # observeデコレータを取得（Langfuseが利用可能な場合のみ適用）
+        observe_decorator = self.langfuse_handler.observe_decorator("product_management_workflow")
+        
+        @observe_decorator
+        def _execute_workflow():
+            try:
+                # LLMタイプが指定された場合は切り替え
+                if llm_type and llm_type != self.llm_type:
+                    self.switch_llm(llm_type)
+                
+                # 初期状態
+                initial_state = AgentState(
+                    messages=[HumanMessage(content=command)],
+                    user_input=command,
+                    html_content=None,
+                    error_message=None,
+                    next_actions=None,
+                    session_id=session_id,
+                    user_id=user_id,
+                )
+                
+                # 柔軟なワークフローを実行
+                config = self.langfuse_handler.get_config("product_management_workflow", session_id, user_id)
+                final_state = self.graph.invoke(initial_state, config=config)
+                
+                # レスポンスを構築
+                response_data = {
+                    "message": final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました",
+                    "html_content": final_state.get("html_content"),
+                    "next_actions": final_state.get("next_actions"),
+                    "llm_type_used": self.llm_type,
+                    "llm_info": self.get_llm_info()
+                }
+                
+                if final_state.get("error_message"):
+                    response_data["error"] = final_state["error_message"]
+                
+                return json.dumps(response_data, ensure_ascii=False, indent=2)
+                
+            except Exception as e:
+                error_msg = f"ワークフロー実行に失敗しました: {str(e)}"
+                return json.dumps({
+                    "message": error_msg,
+                    "error": str(e),
+                    "llm_type_used": self.llm_type,
+                    "llm_info": self.get_llm_info()
+                }, ensure_ascii=False)
+        
+        return _execute_workflow()
 
 # 使用例とテストケース
 EXAMPLE_COMMANDS = [

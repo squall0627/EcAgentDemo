@@ -6,11 +6,11 @@ from db.database import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create tables before the application starts
+    # 起動時：アプリケーション開始前にテーブルを作成
     init_db()
     yield
-    # Shutdown: Clean up resources if needed
-    # Add any cleanup code here
+    # 終了時：必要に応じてリソースをクリーンアップ
+    # ここにクリーンアップコードを追加
 
 app = FastAPI(title="EC商品管理システム", version="1.0.0", lifespan=lifespan)
 

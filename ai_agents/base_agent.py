@@ -1,0 +1,437 @@
+import os
+import json
+from abc import ABC, abstractmethod
+from typing import TypedDict, Annotated, List, Dict, Any, Optional, Type
+
+from dotenv import load_dotenv
+from langgraph.constants import START, END
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langgraph.graph import StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
+
+from llm.llm_handler import LLMHandler
+from utils.langfuse_handler import LangfuseHandler
+from ai_agents.intelligent_agent_router import IntelligentAgentRouter, AgentCapability, RoutingDecision
+
+load_dotenv()
+
+# エージェント基底状態定義 - 全エージェント共通の状態管理
+class BaseAgentState(TypedDict):
+    """
+    全エージェント共通の基本状態
+    各具象エージェントは必要に応じてこの状態を拡張可能
+    """
+    messages: Annotated[List[HumanMessage | AIMessage | SystemMessage], add_messages]
+    user_input: str
+    html_content: Optional[str]
+    error_message: Optional[str]
+    next_actions: Optional[str]
+    session_id: Optional[str]
+    user_id: Optional[str]
+    agent_type: Optional[str]  # エージェント種別を識別するフィールド
+
+class BaseAgent(ABC):
+    """
+    全エージェントの基底クラス
+    共通の基本機能とワークフローを提供し、マルチエージェント対応のための標準インターフェースを定義
+    """
+    
+    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True, agent_name: str = None):
+        """
+        エージェント基底初期化
+        
+        Args:
+            api_key: APIキー
+            llm_type: LLMタイプ（省略時はデフォルト）
+            use_langfuse: Langfuse使用フラグ
+            agent_name: エージェント名（トレーシング用）
+        """
+        self.api_key = api_key
+        self.agent_name = agent_name or self.__class__.__name__
+        
+        # LLMハンドラ初期化 - 動的LLM切り替え対応
+        self.llm_handler = LLMHandler(api_key, llm_type)
+        
+        # Langfuse初期化 - 統一トレーシング管理
+        self.langfuse_handler = LangfuseHandler(use_langfuse=use_langfuse)
+        
+        # エージェント固有のツール初期化（子クラスで実装）
+        self.tools = self._initialize_tools()
+        
+        # ツールマッピング作成
+        self.tool_map = {tool.name: tool for tool in self.tools}
+        
+        # ツール付きLLM初期化
+        self.llm_with_tools = self.llm_handler.get_llm_with_tools(self.tools)
+        self.tool_node = ToolNode(self.tools)
+        
+        # ワークフローグラフ構築
+        self.graph = self._build_workflow_graph()
+    
+    @abstractmethod
+    def _initialize_tools(self) -> List[Any]:
+        """
+        エージェント固有のツールを初期化（子クラスで実装必須）
+        
+        Returns:
+            List[Any]: エージェント固有のツールリスト
+        """
+        pass
+    
+    @abstractmethod
+    def _get_system_message_content(self) -> str:
+        """
+        エージェント固有のシステムメッセージを取得（子クラスで実装必須）
+        
+        Returns:
+            str: システムメッセージ内容
+        """
+        pass
+    
+    @abstractmethod
+    def _get_workflow_name(self) -> str:
+        """
+        ワークフロー名を取得（トレーシング用、子クラスで実装必須）
+        
+        Returns:
+            str: ワークフロー名
+        """
+        pass
+    
+    @abstractmethod
+    def get_agent_capability(self) -> AgentCapability:
+        """
+        エージェント能力定義を取得（インテリジェントルーティング用、子クラスで実装必須）
+        
+        Returns:
+            AgentCapability: エージェント能力定義
+        """
+        pass
+    
+    def _get_state_class(self) -> Type[TypedDict]:
+        """
+        使用する状態クラスを取得（子クラスでオーバーライド可能）
+        
+        Returns:
+            Type[TypedDict]: 状態クラス
+        """
+        return BaseAgentState
+    
+    def _assistant_node(self, state: BaseAgentState):
+        """
+        基本アシスタントノード - システムメッセージとLLM呼び出しを処理
+        子クラスでオーバーライド可能
+        """
+        # エージェント固有のシステムメッセージを取得
+        sys_msg = SystemMessage(content=self._get_system_message_content())
+        
+        # エージェント種別を状態に設定
+        state["agent_type"] = self.agent_name
+        
+        # LLMを呼び出してメッセージに追加
+        response = self.llm_with_tools.invoke([sys_msg] + state["messages"])
+        state["messages"].append(response)
+        
+        return state
+    
+    def _build_workflow_graph(self) -> StateGraph:
+        """
+        基本ワークフローグラフを構築 - 標準的なassistant->tools->assistantフロー
+        子クラスでオーバーライドして独自ワークフローを実装可能
+        """
+        # 状態グラフを定義
+        state_class = self._get_state_class()
+        builder = StateGraph(state_class)
+        
+        # 基本ノードを追加
+        builder.add_node("assistant", self._assistant_node)
+        builder.add_node("tools", self.tool_node)
+        
+        # 基本エッジを定義
+        builder.add_edge(START, "assistant")
+        builder.add_conditional_edges(
+            "assistant",
+            tools_condition,  # ツールが必要な場合はtools、そうでなければ終了
+        )
+        builder.add_edge("tools", "assistant")
+        
+        return builder.compile()
+    
+    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None) -> BaseAgentState:
+        """
+        初期状態を作成 - 子クラスでオーバーライド可能
+        
+        Args:
+            command: ユーザーコマンド
+            session_id: セッションID
+            user_id: ユーザーID
+            
+        Returns:
+            BaseAgentState: 初期状態
+        """
+        state_class = self._get_state_class()
+        return state_class(
+            messages=[HumanMessage(content=command)],
+            user_input=command,
+            html_content=None,
+            error_message=None,
+            next_actions=None,
+            session_id=session_id,
+            user_id=user_id,
+            agent_type=self.agent_name
+        )
+    
+    def _process_final_state(self, final_state: BaseAgentState) -> Dict[str, Any]:
+        """
+        最終状態を処理してレスポンスを構築 - 子クラスでオーバーライド可能
+        
+        Args:
+            final_state: 最終状態
+            
+        Returns:
+            Dict[str, Any]: レスポンスデータ
+        """
+        response_data = {
+            "message": final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました",
+            "html_content": final_state.get("html_content"),
+            "next_actions": final_state.get("next_actions"),
+            "llm_type_used": self.llm_type,
+            "llm_info": self.get_llm_info(),
+            "agent_type": self.agent_name
+        }
+        
+        if final_state.get("error_message"):
+            response_data["error"] = final_state["error_message"]
+        
+        return response_data
+    
+    def switch_llm(self, new_llm_type: str):
+        """LLMタイプを実行時に切り替え"""
+        self.llm_handler.switch_llm(new_llm_type)
+        # ツール付きLLMも更新
+        self.llm_with_tools = self.llm_handler.get_llm_with_tools(self.tools)
+    
+    def get_available_llms(self) -> List[str]:
+        """利用可能なLLMのリストを取得"""
+        return self.llm_handler.get_available_llms()
+    
+    def get_llm_info(self, llm_type: str = None) -> Dict[str, Any]:
+        """LLM情報を取得"""
+        return self.llm_handler.get_llm_info(llm_type)
+    
+    @property
+    def llm_type(self) -> str:
+        """現在のLLMタイプを取得"""
+        return self.llm_handler.get_current_llm_type()
+    
+    def get_agent_info(self) -> Dict[str, Any]:
+        """エージェント情報を取得"""
+        return {
+            "agent_name": self.agent_name,
+            "agent_type": self.__class__.__name__,
+            "tools_count": len(self.tools),
+            "tool_names": [tool.name for tool in self.tools],
+            "llm_type": self.llm_type,
+            "llm_info": self.get_llm_info()
+        }
+    
+    def process_command(self, command: str, llm_type: str = None, session_id: str = None, user_id: str = None) -> str:
+        """
+        ユーザーコマンドを処理 - 統一インターフェース
+        
+        Args:
+            command: ユーザーコマンド
+            llm_type: LLMタイプ（省略時は現在のLLMを使用）
+            session_id: セッションID
+            user_id: ユーザーID
+            
+        Returns:
+            str: JSON形式のレスポンス
+        """
+        # observeデコレータを取得（Langfuseが利用可能な場合のみ適用）
+        workflow_name = self._get_workflow_name()
+        observe_decorator = self.langfuse_handler.observe_decorator(workflow_name)
+        
+        @observe_decorator
+        def _execute_workflow():
+            try:
+                # LLMタイプが指定された場合は切り替え
+                if llm_type and llm_type != self.llm_type:
+                    self.switch_llm(llm_type)
+                
+                # 初期状態を作成
+                initial_state = self._create_initial_state(command, session_id, user_id)
+                
+                # ワークフローを実行
+                config = self.langfuse_handler.get_config(workflow_name, session_id, user_id)
+                final_state = self.graph.invoke(initial_state, config=config)
+                
+                # レスポンスを構築
+                response_data = self._process_final_state(final_state)
+                
+                return json.dumps(response_data, ensure_ascii=False, indent=2)
+                
+            except Exception as e:
+                error_msg = f"ワークフロー実行に失敗しました: {str(e)}"
+                return json.dumps({
+                    "message": error_msg,
+                    "error": str(e),
+                    "llm_type_used": self.llm_type,
+                    "llm_info": self.get_llm_info(),
+                    "agent_type": self.agent_name
+                }, ensure_ascii=False)
+        
+        return _execute_workflow()
+
+class IntelligentMultiAgentOrchestrator:
+    """
+    インテリジェントマルチエージェント統合管理クラス
+    LLMベースの知的ルーティングで複数のエージェントを統合管理し、適切なエージェントに処理を委譲
+    """
+    
+    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
+        """
+        インテリジェントマルチエージェント統合管理初期化
+        
+        Args:
+            api_key: APIキー
+            llm_type: LLMタイプ
+            use_langfuse: Langfuse使用フラグ
+        """
+        self.agents: Dict[str, BaseAgent] = {}
+        
+        # インテリジェントルーターを初期化
+        self.intelligent_router = IntelligentAgentRouter(
+            api_key=api_key,
+            llm_type=llm_type,
+            use_langfuse=use_langfuse
+        )
+    
+    def register_agent(self, agent_type: str, agent: BaseAgent):
+        """
+        エージェントを登録し、その能力定義をルーターに登録
+        
+        Args:
+            agent_type: エージェントタイプ
+            agent: エージェントインスタンス
+        """
+        self.agents[agent_type] = agent
+        
+        # エージェント能力をルーターに登録
+        capability = agent.get_agent_capability()
+        self.intelligent_router.register_agent_capability(capability)
+    
+    def get_agent(self, agent_type: str) -> Optional[BaseAgent]:
+        """エージェントを取得"""
+        return self.agents.get(agent_type)
+    
+    def route_command_intelligently(self, command: str, context: Dict[str, Any] = None) -> RoutingDecision:
+        """
+        LLMベースでコマンドを分析して最適なエージェントを決定
+        
+        Args:
+            command: ユーザーコマンド
+            context: 追加コンテキスト情報
+            
+        Returns:
+            RoutingDecision: ルーティング決定結果
+        """
+        return self.intelligent_router.route_command(command, context)
+    
+    def process_command(self, command: str, agent_type: str = None, context: Dict[str, Any] = None, **kwargs) -> str:
+        """
+        コマンドを処理 - インテリジェントルーティングで適切なエージェントに委譲
+        
+        Args:
+            command: ユーザーコマンド
+            agent_type: 指定エージェントタイプ（省略時はインテリジェントルーティング）
+            context: 追加コンテキスト情報
+            **kwargs: その他のパラメータ
+            
+        Returns:
+            str: JSON形式のレスポンス
+        """
+        # エージェントタイプが指定されていない場合はインテリジェントルーティング
+        routing_decision = None
+        if not agent_type:
+            routing_decision = self.route_command_intelligently(command, context)
+            agent_type = routing_decision.selected_agent
+        
+        # エージェントを取得
+        agent = self.get_agent(agent_type)
+        if not agent:
+            error_response = {
+                "error": f"エージェントタイプ '{agent_type}' が見つかりません",
+                "available_agents": list(self.agents.keys())
+            }
+            
+            if routing_decision:
+                error_response.update({
+                    "routing_decision": routing_decision.dict(),
+                    "alternative_agents": routing_decision.alternative_agents
+                })
+            
+            return json.dumps(error_response, ensure_ascii=False)
+        
+        # エージェントに処理を委譲
+        result = agent.process_command(command, **kwargs)
+        
+        # ルーティング情報を結果に追加
+        if routing_decision:
+            result_data = json.loads(result)
+            result_data["routing_decision"] = routing_decision.dict()
+            result = json.dumps(result_data, ensure_ascii=False, indent=2)
+        
+        return result
+    
+    def process_collaborative_command(self, command: str, context: Dict[str, Any] = None, **kwargs) -> str:
+        """
+        複数エージェント連携が必要なコマンドを処理
+        
+        Args:
+            command: ユーザーコマンド
+            context: 追加コンテキスト情報
+            **kwargs: その他のパラメータ
+            
+        Returns:
+            str: JSON形式のレスポンス
+        """
+        routing_decision = self.route_command_intelligently(command, context)
+        
+        if not routing_decision.requires_collaboration:
+            # 単一エージェントで処理
+            return self.process_command(command, routing_decision.selected_agent, context, **kwargs)
+        
+        # 複数エージェント連携処理
+        collaboration_results = []
+        for agent_type in routing_decision.collaboration_sequence:
+            agent = self.get_agent(agent_type)
+            if agent:
+                result = agent.process_command(command, **kwargs)
+                collaboration_results.append({
+                    "agent_type": agent_type,
+                    "result": json.loads(result)
+                })
+        
+        return json.dumps({
+            "collaboration_mode": True,
+            "routing_decision": routing_decision.dict(),
+            "collaboration_results": collaboration_results,
+            "final_message": "複数エージェント連携処理が完了しました"
+        }, ensure_ascii=False, indent=2)
+    
+    def get_all_agents_info(self) -> Dict[str, Any]:
+        """全エージェントの情報を取得"""
+        return {
+            agent_type: agent.get_agent_info() 
+            for agent_type, agent in self.agents.items()
+        }
+    
+    def get_routing_analytics(self) -> Dict[str, Any]:
+        """ルーティング分析情報を取得"""
+        return self.intelligent_router.get_routing_analytics()
+    
+    def provide_routing_feedback(self, command: str, actual_agent: str, success: bool, user_feedback: str = None):
+        """ルーティング結果のフィードバックを提供"""
+        self.intelligent_router.update_routing_feedback(command, actual_agent, success, user_feedback)

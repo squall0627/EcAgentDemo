@@ -1,13 +1,11 @@
 import os
-import json
-from typing import TypedDict, Annotated, List, Dict, Any, Optional
+from typing import List, Any, Type, TypedDict, Optional
 
 from dotenv import load_dotenv
-from langgraph.constants import START
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
-from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
+from langchain.schema import HumanMessage
+
+from ai_agents.base_agent import BaseAgent, BaseAgentState
+from ai_agents.intelligent_agent_router import AgentCapability
 from ai_agents.tools.product_tools import (
     UpdateStockTool,
     UpdatePriceTool,
@@ -21,34 +19,34 @@ from ai_agents.tools.product_tools import (
     UnpublishProductsTool, 
     search_products_tool
 )
-from llm.llm_handler import LLMHandler
-from utils.langfuse_handler import LangfuseHandler
 
 load_dotenv()
 
-# LangGraph状態定義 - より柔軟な状態管理
-class AgentState(TypedDict):
-    messages: Annotated[List[HumanMessage | AIMessage | SystemMessage], add_messages]
-    user_input: str
-    html_content: Optional[str]
-    error_message: Optional[str]
-    next_actions: Optional[str]
-    session_id: Optional[str]
-    user_id: Optional[str]
+# 商品管理エージェント専用状態定義
+class ProductAgentState(BaseAgentState):
+    """商品管理エージェント固有の状態を拡張"""
+    product_ids: Optional[List[str]]  # 処理対象商品IDリスト
+    operation_type: Optional[str]     # 操作タイプ（stock, price, category等）
+    bulk_operation: Optional[bool]    # 一括操作フラグ
 
-class ProductManagementAgent:
+class ProductManagementAgent(BaseAgent):
+    """
+    商品管理専門エージェント
+    BaseAgentを継承してECバックオフィス商品管理機能を提供
+    """
+    
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
-        """柔軟な商品管理エージェント - 設定ファイルベースの動的LLM選択"""
-        self.api_key = api_key
-        
-        # LLMHandlerを使用してLLM管理を委譲
-        self.llm_handler = LLMHandler(api_key, llm_type)
-        
-        # Langfuse V3 初期化 - LangfuseHandlerを使用
-        self.langfuse_handler = LangfuseHandler(use_langfuse=use_langfuse)
-        
-        # ツール初期化
-        self.tools = [
+        """商品管理エージェント初期化"""
+        super().__init__(
+            api_key=api_key, 
+            llm_type=llm_type, 
+            use_langfuse=use_langfuse,
+            agent_name="ProductManagementAgent"
+        )
+    
+    def _initialize_tools(self) -> List[Any]:
+        """商品管理固有のツールを初期化"""
+        return [
             search_products_tool,
             UpdateStockTool(),
             UpdatePriceTool(),
@@ -61,40 +59,10 @@ class ProductManagementAgent:
             PublishProductsTool(),
             UnpublishProductsTool()
         ]
-        
-        # ツールマッピングを作成
-        self.tool_map = {tool.name: tool for tool in self.tools}
-        
-        # ツール付きLLM
-        self.llm_with_tools = self.llm_handler.get_llm_with_tools(self.tools)
-        self.tool_node = ToolNode(self.tools)
-        
-        # 柔軟なワークフローを構築
-        self.graph = self._build_flexible_graph()
-
-    def switch_llm(self, new_llm_type: str):
-        """実行時にLLMタイプを切り替え"""
-        self.llm_handler.switch_llm(new_llm_type)
-        # ツール付きLLMも更新
-        self.llm_with_tools = self.llm_handler.get_llm_with_tools(self.tools)
-
-    def get_available_llms(self):
-        """利用可能なLLMのリストを取得"""
-        return self.llm_handler.get_available_llms()
     
-    def get_llm_info(self, llm_type: str = None):
-        """LLM情報を取得"""
-        return self.llm_handler.get_llm_info(llm_type)
-
-    @property
-    def llm_type(self):
-        """現在のLLMタイプを取得"""
-        return self.llm_handler.get_current_llm_type()
-
-    def assistant(self, state: AgentState):
-        # システムメッセージ
-        sys_msg = SystemMessage(
-            content="""
+    def _get_system_message_content(self) -> str:
+        """商品管理エージェント固有のシステムメッセージ"""
+        return """
 あなたはECバックオフィス商品管理の専門アシスタントです。管理者の自然言語コマンドを理解し、以下の機能を提供します：
 
 ## 主要機能：
@@ -136,86 +104,70 @@ class ProductManagementAgent:
 - 次のアクション提案は "next_actions" フィールドに含める
 
 常に親しみやすく明確な日本語で応答し、管理者の業務効率向上を最優先に考えてください。
-""")
-
-        state["messages"].append(self.llm_with_tools.invoke([sys_msg] + state["messages"]))
-        return state
-
-    def _build_flexible_graph(self) -> StateGraph:
-        """柔軟なワークフローグラフを構築"""
-        # 状態グラフを定義
-        builder = StateGraph(AgentState)
-
-        # ノードを定義：これらが実際の作業を行う
-        builder.add_node("assistant", self.assistant)
-        builder.add_node("tools", self.tool_node)
-
-        # エッジを定義：これらが制御フローの移動方法を決定する
-        builder.add_edge(START, "assistant")
-        builder.add_conditional_edges(
-            "assistant",
-            # 最新のメッセージがツールを必要とする場合、ツールにルーティング
-            # そうでなければ、直接応答を提供
-            tools_condition,
+"""
+    
+    def _get_workflow_name(self) -> str:
+        """ワークフロー名を取得"""
+        return "product_management_workflow"
+    
+    def get_agent_capability(self) -> AgentCapability:
+        """商品管理エージェントの能力定義を取得"""
+        return AgentCapability(
+            agent_type="product_management",
+            description="ECバックオフィス商品管理専門エージェント。商品情報の検索、在庫管理、価格設定、棚上げ・棚下げ操作、HTML画面生成などを担当。",
+            primary_domains=[
+                "商品管理", "在庫管理", "価格管理", "商品情報", "ECバックオフィス", 
+                "棚上げ", "棚下げ", "商品検索", "商品カテゴリー"
+            ],
+            key_functions=[
+                "商品検索・フィルタリング",
+                "在庫数量の更新（個別・一括）",
+                "商品価格の設定・更新（個別・一括）", 
+                "商品説明文の編集・更新",
+                "商品カテゴリーの設定・変更",
+                "商品棚上げ・棚下げ状態の管理",
+                "棚上げ前提条件の検証",
+                "動的HTML管理画面の生成",
+                "商品操作のエラーハンドリング"
+            ],
+            example_commands=[
+                "JAN123456789の在庫を50に変更して",
+                "コーヒー商品の価格を一括で1500円に設定",
+                "商品ABC123を棚上げできるかチェック",
+                "在庫不足の商品をすべて棚下げ",
+                "飲料カテゴリーの商品一覧を表示",
+                "商品説明に「限定」を含む商品を検索",
+                "商品管理画面を生成",
+                "価格が1000円以下の商品を価格順で表示"
+            ],
+            collaboration_needs=[
+                "注文管理エージェント: 商品の注文状況確認時",
+                "顧客サービスエージェント: 商品問い合わせ対応時",
+                "在庫分析エージェント: 詳細な在庫分析が必要な時"
+            ]
         )
-        builder.add_edge("tools", "assistant")
-        
-        return builder.compile()
+    
+    def _get_state_class(self) -> Type[TypedDict]:
+        """商品管理エージェント専用状態クラスを使用"""
+        return ProductAgentState
+    
+    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None) -> ProductAgentState:
+        """商品管理エージェント専用の初期状態を作成"""
+        return ProductAgentState(
+            messages=[HumanMessage(content=command)],
+            user_input=command,
+            html_content=None,
+            error_message=None,
+            next_actions=None,
+            session_id=session_id,
+            user_id=user_id,
+            agent_type=self.agent_name,
+            product_ids=None,
+            operation_type=None,
+            bulk_operation=False
+        )
 
-    def process_command(self, command: str, llm_type: str = None, session_id: str = None, user_id: str = None) -> str:
-        """ユーザーコマンドを処理 - 設定ベースの動的LLM切り替え対応"""
-        
-        # observeデコレータを取得（Langfuseが利用可能な場合のみ適用）
-        observe_decorator = self.langfuse_handler.observe_decorator("product_management_workflow")
-        
-        @observe_decorator
-        def _execute_workflow():
-            try:
-                # LLMタイプが指定された場合は切り替え
-                if llm_type and llm_type != self.llm_type:
-                    self.switch_llm(llm_type)
-                
-                # 初期状態
-                initial_state = AgentState(
-                    messages=[HumanMessage(content=command)],
-                    user_input=command,
-                    html_content=None,
-                    error_message=None,
-                    next_actions=None,
-                    session_id=session_id,
-                    user_id=user_id,
-                )
-                
-                # 柔軟なワークフローを実行
-                config = self.langfuse_handler.get_config("product_management_workflow", session_id, user_id)
-                final_state = self.graph.invoke(initial_state, config=config)
-                
-                # レスポンスを構築
-                response_data = {
-                    "message": final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました",
-                    "html_content": final_state.get("html_content"),
-                    "next_actions": final_state.get("next_actions"),
-                    "llm_type_used": self.llm_type,
-                    "llm_info": self.get_llm_info()
-                }
-                
-                if final_state.get("error_message"):
-                    response_data["error"] = final_state["error_message"]
-                
-                return json.dumps(response_data, ensure_ascii=False, indent=2)
-                
-            except Exception as e:
-                error_msg = f"ワークフロー実行に失敗しました: {str(e)}"
-                return json.dumps({
-                    "message": error_msg,
-                    "error": str(e),
-                    "llm_type_used": self.llm_type,
-                    "llm_info": self.get_llm_info()
-                }, ensure_ascii=False)
-        
-        return _execute_workflow()
-
-# 使用例とテストケース
+# 商品管理コマンド例
 EXAMPLE_COMMANDS = [
     # 直接実行タイプ
     "JAN123456789の在庫を50に変更",
@@ -246,11 +198,12 @@ EXAMPLE_COMMANDS = [
 if __name__ == "__main__":
     api_key = os.getenv("OPENAI_API_KEY")
     
-    # 設定ベースでエージェントを初期化
+    # 商品管理エージェントの単体使用
     agent = ProductManagementAgent(api_key)
     
-    # 利用可能なLLMを表示
-    print("利用可能なLLM:", agent.get_available_llms())
+    # エージェント能力情報を表示
+    capability = agent.get_agent_capability()
+    print("エージェント能力:", capability)
     
     # テスト実行
     result = agent.process_command("JAN code 1000000000001の商品を検索し、商品詳細一覧画面を生成してください。")

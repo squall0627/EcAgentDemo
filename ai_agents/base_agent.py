@@ -1,13 +1,13 @@
-import os
 import json
 from abc import ABC, abstractmethod
 from typing import TypedDict, Annotated, List, Dict, Any, Optional, Type
 
 from dotenv import load_dotenv
-from langgraph.constants import START, END
+from langgraph.constants import START
 from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from llm.llm_handler import LLMHandler
@@ -135,7 +135,7 @@ class BaseAgent(ABC):
         
         return state
     
-    def _build_workflow_graph(self) -> StateGraph:
+    def _build_workflow_graph(self) -> CompiledStateGraph:
         """
         基本ワークフローグラフを構築 - 標準的なassistant->tools->assistantフロー
         子クラスでオーバーライドして独自ワークフローを実装可能
@@ -368,7 +368,7 @@ class IntelligentMultiAgentOrchestrator:
             
             if routing_decision:
                 error_response.update({
-                    "routing_decision": routing_decision.dict(),
+                    "routing_decision": routing_decision.model_dump(),
                     "alternative_agents": routing_decision.alternative_agents
                 })
             
@@ -380,7 +380,7 @@ class IntelligentMultiAgentOrchestrator:
         # ルーティング情報を結果に追加
         if routing_decision:
             result_data = json.loads(result)
-            result_data["routing_decision"] = routing_decision.dict()
+            result_data["routing_decision"] = routing_decision.model_dump()
             result = json.dumps(result_data, ensure_ascii=False, indent=2)
         
         return result
@@ -416,7 +416,7 @@ class IntelligentMultiAgentOrchestrator:
         
         return json.dumps({
             "collaboration_mode": True,
-            "routing_decision": routing_decision.dict(),
+            "routing_decision": routing_decision.model_dump(),
             "collaboration_results": collaboration_results,
             "final_message": "複数エージェント連携処理が完了しました"
         }, ensure_ascii=False, indent=2)
@@ -432,6 +432,6 @@ class IntelligentMultiAgentOrchestrator:
         """ルーティング分析情報を取得"""
         return self.intelligent_router.get_routing_analytics()
     
-    def provide_routing_feedback(self, command: str, actual_agent: str, success: bool, user_feedback: str = None):
+    def provide_routing_feedback(self, command: str, predicted_agent: str, actual_agent: str, success: bool, user_feedback: str = None):
         """ルーティング結果のフィードバックを提供"""
-        self.intelligent_router.update_routing_feedback(command, actual_agent, success, user_feedback)
+        self.intelligent_router.update_routing_feedback(command, predicted_agent, actual_agent, success, user_feedback)

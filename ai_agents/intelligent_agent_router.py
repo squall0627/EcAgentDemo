@@ -1,11 +1,11 @@
 import json
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import statistics
 from datetime import datetime
 
-from langchain.schema import HumanMessage, SystemMessage
+from langchain.schema import HumanMessage
 from pydantic import BaseModel, Field
 
 from llm.llm_handler import LLMHandler
@@ -264,7 +264,7 @@ class IntelligentAgentRouter:
             raise ValueError("エージェント能力が登録されていません。先にregister_agent_capabilityを実行してください。")
         
         prompt = self._build_routing_prompt(command, context)
-        
+
         try:
             # Langfuse設定を取得
             langfuse_config = self.langfuse_handler.get_config(
@@ -272,7 +272,7 @@ class IntelligentAgentRouter:
                 session_id=context.get("session_id") if context else None,
                 user_id=context.get("user_id") if context else None
             )
-        
+
             # LLMでエージェントを選択 - invoke()メソッドとLangfuse callbackを使用
             response = self.routing_llm.invoke(
                 [HumanMessage(content=prompt)],
@@ -295,7 +295,7 @@ class IntelligentAgentRouter:
             self.routing_history.append({
                 "command": command,
                 "context": context,
-                "routing_decision": routing_decision.dict(),
+                "routing_decision": routing_decision.model_dump(),
                 "prompt": prompt,
                 "response": response.content,
                 "timestamp": datetime.now().isoformat()

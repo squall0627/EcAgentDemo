@@ -109,6 +109,7 @@ class RoutingAnalysisResponse(BaseModel):
 
 class RoutingFeedbackRequest(BaseModel):
     command: str
+    predicted_agent: str
     actual_agent: str
     success: bool
     user_feedback: Optional[str] = None
@@ -209,6 +210,7 @@ async def provide_routing_feedback(request: RoutingFeedbackRequest):
         manager = get_multi_agent_manager()
         manager.provide_routing_feedback(
             request.command,
+            request.predicted_agent,
             request.actual_agent,
             request.success,
             request.user_feedback

@@ -226,17 +226,18 @@ class ECBackofficeMultiAgentManager:
         """ルーティング分析情報を取得"""
         return self.orchestrator.get_routing_analytics()
     
-    def provide_routing_feedback(self, command: str, actual_agent: str, success: bool, user_feedback: str = None):
+    def provide_routing_feedback(self, command: str, predicted_agent: str, actual_agent: str, success: bool, user_feedback: str = None):
         """
         ルーティング結果のフィードバックを提供
         
         Args:
             command: 元のコマンド
+            predicted_agent: 予測されたエージェント
             actual_agent: 実際に使用されたエージェント
             success: 処理成功フラグ
             user_feedback: ユーザーフィードバック
         """
-        self.orchestrator.provide_routing_feedback(command, actual_agent, success, user_feedback)
+        self.orchestrator.provide_routing_feedback(command, predicted_agent, actual_agent, success, user_feedback)
     
     def get_system_status(self) -> Dict[str, Any]:
         """システム全体の状態を取得"""

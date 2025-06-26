@@ -1,8 +1,5 @@
-import os
-
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from api.routers import product_api, agent_api, html_api, top_page_api
 from db.database import init_db
 from fastapi.middleware.cors import CORSMiddleware

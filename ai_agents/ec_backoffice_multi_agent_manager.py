@@ -36,11 +36,16 @@ class ECBackofficeMultiAgentManager:
             use_langfuse=use_langfuse
         )
         
-        # 各種エージェントを初期化・登録
-        self._initialize_agents()
+        # 商品管理エージェントを登録
+        self._register_product_management_agent()
+        # 将来的な他のエージェント登録予定箇所
+        # self._register_order_management_agent()     # 注文管理エージェント
+        # self._register_customer_service_agent()     # 顧客サービスエージェント
+        # self._register_inventory_analysis_agent()   # 在庫分析エージェント
+        # self._register_marketing_agent()            # マーケティングエージェント
     
-    def _initialize_agents(self):
-        """各種エージェントを初期化・登録"""
+    def _register_product_management_agent(self):
+        """商品管理エージェントを登録"""
         
         # 商品管理エージェントを登録
         product_agent = ProductManagementAgent(
@@ -53,12 +58,6 @@ class ECBackofficeMultiAgentManager:
             agent_type="product_management",
             agent=product_agent
         )
-        
-        # 将来的な他のエージェント登録予定箇所
-        # self._register_order_management_agent()     # 注文管理エージェント
-        # self._register_customer_service_agent()     # 顧客サービスエージェント
-        # self._register_inventory_analysis_agent()   # 在庫分析エージェント
-        # self._register_marketing_agent()            # マーケティングエージェント
     
     def _register_order_management_agent(self):
         """注文管理エージェント登録（将来実装予定）"""

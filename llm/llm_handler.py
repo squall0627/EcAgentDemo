@@ -1,11 +1,8 @@
 import os
 from typing import Optional
-from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from config.llm_config_loader import llm_config
-
-load_dotenv()
 
 
 class LLMHandler:

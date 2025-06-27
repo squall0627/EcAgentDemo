@@ -1,7 +1,5 @@
-import os
 from typing import List, Any, Type, TypedDict, Optional
 
-from dotenv import load_dotenv
 from langchain.schema import HumanMessage
 
 from ai_agents.base_agent import BaseAgent, BaseAgentState
@@ -20,7 +18,6 @@ from ai_agents.tools.product_tools import (
     search_products_tool
 )
 
-load_dotenv()
 
 # 商品管理エージェント専用状態定義
 class ProductAgentState(BaseAgentState):
@@ -196,6 +193,11 @@ EXAMPLE_COMMANDS = [
 
 # 使用例
 if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     api_key = os.getenv("OPENAI_API_KEY")
     
     # 商品管理エージェントの単体使用

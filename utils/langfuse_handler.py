@@ -1,8 +1,6 @@
 import os
 from typing import Dict, Optional
-from dotenv import load_dotenv
 
-load_dotenv()
 
 # Langfuse V3 imports
 LANGFUSE_AVAILABLE = False

@@ -1,24 +1,19 @@
-import os
 import json
 from typing import Dict, List, Any
-
-from dotenv import load_dotenv
 
 from ai_agents.base_agent import IntelligentMultiAgentOrchestrator
 from ai_agents.product_management_agent import ProductManagementAgent
 from ai_agents.intelligent_agent_router import RoutingDecision
 
-load_dotenv()
-
-class ECBackofficeMultiAgentManager:
+class ProductCenterMultiAgentManager:
     """
-    ECバックオフィス用インテリジェントマルチエージェント統合管理クラス
+    商品センター用インテリジェントマルチエージェント管理クラス
     LLMベースの知的ルーティングで複数エージェントを統合管理
     """
     
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """
-        ECバックオフィス用インテリジェントマルチエージェント管理初期化
+        商品センター用インテリジェントマルチエージェント管理初期化
         
         Args:
             api_key: APIキー
@@ -39,10 +34,9 @@ class ECBackofficeMultiAgentManager:
         # 商品管理エージェントを登録
         self._register_product_management_agent()
         # 将来的な他のエージェント登録予定箇所
-        # self._register_order_management_agent()     # 注文管理エージェント
-        # self._register_customer_service_agent()     # 顧客サービスエージェント
-        # self._register_inventory_analysis_agent()   # 在庫分析エージェント
-        # self._register_marketing_agent()            # マーケティングエージェント
+        # self._register_product_recommendation_agent()  # 商品推薦エージェント（将来実装予定）
+        # self._register_inventory_analysis_agent()  # 在庫分析エージェント（将来実装予定）
+        #  # 他のエージェント登録は必要に応じて追加
     
     def _register_product_management_agent(self):
         """商品管理エージェントを登録"""
@@ -58,32 +52,18 @@ class ECBackofficeMultiAgentManager:
             agent_type="product_management",
             agent=product_agent
         )
-    
-    def _register_order_management_agent(self):
-        """注文管理エージェント登録（将来実装予定）"""
-        # TODO: 注文管理エージェントの実装
-        # order_agent = OrderManagementAgent(
+
+    def _register_product_recommendation_agent(self):
+        """商品推薦エージェント登録（将来実装予定）"""
+        # TODO: 商品推薦エージェントの実装
+        # recommendation_agent = ProductRecommendationAgent(
         #     api_key=self.api_key,
         #     llm_type=self.default_llm_type,
         #     use_langfuse=self.use_langfuse
         # )
         # self.orchestrator.register_agent(
-        #     agent_type="order_management",
-        #     agent=order_agent
-        # )
-        pass
-    
-    def _register_customer_service_agent(self):
-        """顧客サービスエージェント登録（将来実装予定）"""
-        # TODO: 顧客サービスエージェントの実装
-        # customer_agent = CustomerServiceAgent(
-        #     api_key=self.api_key,
-        #     llm_type=self.default_llm_type,
-        #     use_langfuse=self.use_langfuse
-        # )
-        # self.orchestrator.register_agent(
-        #     agent_type="customer_service",
-        #     agent=customer_agent
+        #     agent_type="product_recommendation",
+        #     agent=recommendation_agent
         # )
         pass
     
@@ -98,20 +78,6 @@ class ECBackofficeMultiAgentManager:
         # self.orchestrator.register_agent(
         #     agent_type="inventory_analysis",
         #     agent=inventory_agent
-        # )
-        pass
-    
-    def _register_marketing_agent(self):
-        """マーケティングエージェント登録（将来実装予定）"""
-        # TODO: マーケティングエージェントの実装
-        # marketing_agent = MarketingAgent(
-        #     api_key=self.api_key,
-        #     llm_type=self.default_llm_type,
-        #     use_langfuse=self.use_langfuse
-        # )
-        # self.orchestrator.register_agent(
-        #     agent_type="marketing",
-        #     agent=marketing_agent
         # )
         pass
     
@@ -305,10 +271,15 @@ class ECBackofficeMultiAgentManager:
 
 # 使用例とテスト
 if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     api_key = os.getenv("OPENAI_API_KEY")
     
     # インテリジェントマルチエージェント管理を初期化
-    manager = ECBackofficeMultiAgentManager(api_key)
+    manager = ProductCenterMultiAgentManager(api_key)
     
     # システム状態を表示
     print("=== システム状態 ===")

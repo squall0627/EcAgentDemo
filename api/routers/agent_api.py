@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from ai_agents.product_management_agent import ProductManagementAgent, EXAMPLE_COMMANDS
-from ai_agents.ec_backoffice_multi_agent_manager import ECBackofficeMultiAgentManager
+from ai_agents.product_center_multi_agent_manager import ProductCenterMultiAgentManager
 from typing import Optional, List, Dict, Any
 import os
 import json
@@ -58,7 +58,7 @@ def get_multi_agent_manager(llm_type: str = None):
         api_key = os.getenv("OPENAI_API_KEY")
         
         # 新しいマネージャーインスタンスを作成
-        multi_agent_manager_instance = ECBackofficeMultiAgentManager(
+        multi_agent_manager_instance = ProductCenterMultiAgentManager(
             api_key=api_key, 
             llm_type=llm_type
         )

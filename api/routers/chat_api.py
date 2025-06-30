@@ -64,6 +64,72 @@ async def get_session_history(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"履歴取得に失敗しました: {str(e)}")
 
+@router.get("/history/users/all")
+async def get_all_users_history(
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """全ユーザーのチャット履歴をユーザーIDとセッションIDでグループ化して取得"""
+    try:
+        # 全ての会話履歴を取得（最新順）
+        conversations = db.query(ConversationHistory)\
+            .order_by(ConversationHistory.created_at.desc())\
+            .limit(limit * 3)\
+            .all()  # より多くのレコードを取得してからグループ化
+        
+        # ユーザーIDとセッションIDでグループ化
+        user_sessions = {}
+        
+        for conv in conversations:
+            user_id = conv.user_id or 'anonymous'
+            session_id = conv.session_id
+            
+            if user_id not in user_sessions:
+                user_sessions[user_id] = {}
+            
+            if session_id not in user_sessions[user_id]:
+                user_sessions[user_id][session_id] = {
+                    'session_id': session_id,
+                    'message_count': 0,
+                    'first_message': None,
+                    'latest_message': None,
+                    'last_activity': None
+                }
+            
+            session_data = user_sessions[user_id][session_id]
+            session_data['message_count'] += 1
+            
+            # 最初のメッセージを保存
+            if session_data['first_message'] is None:
+                session_data['first_message'] = conv.user_message
+            
+            # 最新のメッセージと時刻を更新（時系列順で最初に来るのが最新）
+            if session_data['last_activity'] is None or conv.created_at > session_data['last_activity']:
+                session_data['latest_message'] = conv.user_message
+                session_data['last_activity'] = conv.created_at
+        
+        # レスポンス形式に変換
+        result = []
+        for user_id, sessions in user_sessions.items():
+            sessions_list = list(sessions.values())
+            # セッションを最新のアクティビティ順でソート
+            sessions_list.sort(key=lambda x: x['last_activity'], reverse=True)
+            
+            result.append({
+                'user_id': user_id,
+                'sessions': sessions_list[:20]  # ユーザーあたり最大20セッション
+            })
+        
+        # ユーザーを最新のアクティビティ順でソート
+        result.sort(key=lambda x: max(s['last_activity'] for s in x['sessions']) if x['sessions'] else '', reverse=True)
+        
+        return {
+            "user_sessions": result[:10]  # 最大10ユーザー
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"履歴取得に失敗しました: {str(e)}")
+
 @router.post("/context")
 async def get_conversation_context(
     request: ConversationContextRequest,

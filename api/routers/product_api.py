@@ -381,7 +381,7 @@ class AutoReplenishRequest(BaseModel):
 @router.post("/products/unpublish")
 def unpublish_products(data: PublishRequest, db: Session = Depends(get_db)):
     """商品を棚下げ（非公開に）"""
-    products = db.query(Product).filter(Product.jancode.in_(data.ids)).all()
+    products = db.query(Product).filter(Product.jancode.in_(data.jancodes)).all()
     updated_ids = []
 
     for p in products:

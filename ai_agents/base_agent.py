@@ -13,6 +13,8 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from llm.llm_handler import LLMHandler
 from utils.langfuse_handler import LangfuseHandler
 from ai_agents.intelligent_agent_router import IntelligentAgentRouter, AgentCapability, RoutingDecision
+from services.conversation_service import ConversationService
+from db.database import get_db
 
 load_dotenv()
 
@@ -30,6 +32,8 @@ class BaseAgentState(TypedDict):
     session_id: Optional[str]
     user_id: Optional[str]
     agent_type: Optional[str]  # エージェント種別を識別するフィールド
+    agent_manager_id: Optional[str]  # Agent Manager ID
+    conversation_context: Optional[List[Dict[str, Any]]]  # 会話履歴コンテキスト
 
 class BaseAgent(ABC):
     """
@@ -37,7 +41,7 @@ class BaseAgent(ABC):
     共通の基本機能とワークフローを提供し、マルチエージェント対応のための標準インターフェースを定義
     """
     
-    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True, agent_name: str = None):
+    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True, agent_name: str = None, agent_manager_id: str = None):
         """
         エージェント基底初期化
         
@@ -46,9 +50,11 @@ class BaseAgent(ABC):
             llm_type: LLMタイプ（省略時はデフォルト）
             use_langfuse: Langfuse使用フラグ
             agent_name: エージェント名（トレーシング用）
+            agent_manager_id: Agent Manager ID
         """
         self.api_key = api_key
         self.agent_name = agent_name or self.__class__.__name__
+        self.agent_manager_id = agent_manager_id
         
         # LLMハンドラ初期化 - 動的LLM切り替え対応
         self.llm_handler = LLMHandler(api_key, llm_type)
@@ -68,7 +74,7 @@ class BaseAgent(ABC):
         
         # ワークフローグラフ構築
         self.graph = self._build_workflow_graph()
-    
+
     @abstractmethod
     def _initialize_tools(self) -> List[Any]:
         """
@@ -118,16 +124,58 @@ class BaseAgent(ABC):
         """
         return BaseAgentState
     
+    def _load_conversation_context(self, session_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """会話履歴コンテキストを読み込み"""
+        try:
+            db = next(get_db())
+            
+            # セッション履歴を取得
+            session_history = ConversationService.get_session_history(db, session_id, limit=10)
+            
+            # 異なるエージェント間での履歴も取得
+            cross_agent_history = ConversationService.get_cross_agent_history(
+                db, 
+                session_id=session_id, 
+                user_id=user_id,
+                agent_manager_id=self.agent_manager_id,
+                limit=5
+            )
+            
+            # 履歴をマージして重複を除去
+            all_history = list({conv.id: conv for conv in (session_history + cross_agent_history)}.values())
+            all_history.sort(key=lambda x: x.created_at, reverse=True)
+            
+            return ConversationService.format_history_for_context(all_history[:15])
+            
+        except Exception as e:
+            print(f"会話履歴の読み込みに失敗: {str(e)}")
+            return []
+    
     def _assistant_node(self, state: BaseAgentState):
         """
         基本アシスタントノード - システムメッセージとLLM呼び出しを処理
         子クラスでオーバーライド可能
         """
+        # 会話履歴コンテキストを読み込み
+        if state.get("session_id") and not state.get("conversation_context"):
+            state["conversation_context"] = self._load_conversation_context(
+                state["session_id"], 
+                state.get("user_id")
+            )
+        
         # エージェント固有のシステムメッセージを取得
-        sys_msg = SystemMessage(content=self._get_system_message_content())
+        sys_msg_content = self._get_system_message_content()
+        
+        # 会話履歴コンテキストをシステムメッセージに追加
+        if state.get("conversation_context"):
+            context_summary = self._format_context_for_system_message(state["conversation_context"])
+            sys_msg_content += f"\n\n## 会話履歴コンテキスト:\n{context_summary}"
+        
+        sys_msg = SystemMessage(content=sys_msg_content)
         
         # エージェント種別を状態に設定
         state["agent_type"] = self.agent_name
+        state["agent_manager_id"] = self.agent_manager_id
         
         # LLMを呼び出してメッセージに追加
         response = self.llm_with_tools.invoke([sys_msg] + state["messages"])
@@ -135,6 +183,54 @@ class BaseAgent(ABC):
         
         return state
     
+    def _format_context_for_system_message(self, context: List[Dict[str, Any]]) -> str:
+        """会話コンテキストをシステムメッセージ用にフォーマット"""
+        if not context:
+            return "（履歴なし）"
+        
+        formatted_lines = []
+        for item in context[:5]:  # 最新5件のみ
+            timestamp = item.get("timestamp", "")
+            agent = item.get("agent_type", "unknown")
+            user_msg = item.get("user_message", "")
+            agent_resp = item.get("agent_response", "")
+            
+            formatted_lines.append(f"[{timestamp[:19]}] {agent}: {user_msg} → {agent_resp}")
+        
+        return "\n".join(formatted_lines)
+    
+    def _save_conversation(self, state: BaseAgentState, final_response: str):
+        """会話履歴を保存"""
+        try:
+            if not state.get("session_id"):
+                return
+            
+            db = next(get_db())
+            
+            # レスポンスデータを解析
+            html_content = state.get("html_content")
+            error_info = state.get("error_message")
+            next_actions = state.get("next_actions")
+            
+            ConversationService.save_conversation(
+                db=db,
+                session_id=state["session_id"],
+                user_id=state.get("user_id"),
+                agent_type=self.agent_name,
+                agent_manager_id=self.agent_manager_id,
+                user_message=state["user_input"],
+                agent_response=final_response,
+                message_type='chat',
+                llm_type=self.llm_type,
+                html_content=html_content,
+                error_info=error_info,
+                next_actions=next_actions
+            )
+            
+        except Exception as e:
+            print(f"会話履歴の保存に失敗: {str(e)}")
+    
+    # [既存のメソッドは変更なし - _build_workflow_graph, _create_initial_state, etc.]
     def _build_workflow_graph(self) -> CompiledStateGraph:
         """
         基本ワークフローグラフを構築 - 標準的なassistant->tools->assistantフロー
@@ -179,7 +275,9 @@ class BaseAgent(ABC):
             next_actions=None,
             session_id=session_id,
             user_id=user_id,
-            agent_type=self.agent_name
+            agent_type=self.agent_name,
+            agent_manager_id=self.agent_manager_id,
+            conversation_context=None
         )
     
     def _process_final_state(self, final_state: BaseAgentState) -> Dict[str, Any]:
@@ -192,20 +290,26 @@ class BaseAgent(ABC):
         Returns:
             Dict[str, Any]: レスポンスデータ
         """
+        response_message = final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました"
+        
+        # 会話履歴を保存
+        self._save_conversation(final_state, response_message)
+        
         response_data = {
-            "message": final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました",
+            "message": response_message,
             "html_content": final_state.get("html_content"),
             "next_actions": final_state.get("next_actions"),
             "llm_type_used": self.llm_type,
             "llm_info": self.get_llm_info(),
-            "agent_type": self.agent_name
+            "agent_type": self.agent_name,
+            "agent_manager_id": self.agent_manager_id
         }
         
         if final_state.get("error_message"):
             response_data["error"] = final_state["error_message"]
         
         return response_data
-    
+
     def switch_llm(self, new_llm_type: str):
         """LLMタイプを実行時に切り替え"""
         self.llm_handler.switch_llm(new_llm_type)
@@ -230,6 +334,7 @@ class BaseAgent(ABC):
         return {
             "agent_name": self.agent_name,
             "agent_type": self.__class__.__name__,
+            "agent_manager_id": self.agent_manager_id,
             "tools_count": len(self.tools),
             "tool_names": [tool.name for tool in self.tools],
             "llm_type": self.llm_type,
@@ -279,7 +384,8 @@ class BaseAgent(ABC):
                     "error": str(e),
                     "llm_type_used": self.llm_type,
                     "llm_info": self.get_llm_info(),
-                    "agent_type": self.agent_name
+                    "agent_type": self.agent_name,
+                    "agent_manager_id": self.agent_manager_id
                 }, ensure_ascii=False)
         
         return _execute_workflow()
@@ -290,7 +396,7 @@ class IntelligentMultiAgentOrchestrator:
     LLMベースの知的ルーティングで複数のエージェントを統合管理し、適切なエージェントに処理を委譲
     """
     
-    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
+    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True, manager_id: str = None):
         """
         インテリジェントマルチエージェント統合管理初期化
         
@@ -298,8 +404,10 @@ class IntelligentMultiAgentOrchestrator:
             api_key: APIキー
             llm_type: LLMタイプ
             use_langfuse: Langfuse使用フラグ
+            manager_id: マネージャーID
         """
         self.agents: Dict[str, BaseAgent] = {}
+        self.manager_id = manager_id or f"manager_{id(self)}"
         
         # インテリジェントルーターを初期化
         self.intelligent_router = IntelligentAgentRouter(
@@ -308,6 +416,32 @@ class IntelligentMultiAgentOrchestrator:
             use_langfuse=use_langfuse
         )
     
+    def _save_collaboration_history(self, 
+                                   session_id: str, 
+                                   user_id: Optional[str],
+                                   command: str, 
+                                   routing_decision: RoutingDecision,
+                                   collaboration_results: List[Dict[str, Any]]):
+        """協作履歴を保存"""
+        try:
+            db = next(get_db())
+            
+            ConversationService.save_conversation(
+                db=db,
+                session_id=session_id,
+                user_id=user_id,
+                agent_type="collaboration_manager",
+                agent_manager_id=self.manager_id,
+                user_message=command,
+                agent_response=json.dumps(collaboration_results, ensure_ascii=False),
+                message_type='collaboration',
+                is_collaboration=True,
+                collaboration_agents=[{"agent_type": result["agent_type"]} for result in collaboration_results],
+                routing_decision=routing_decision.model_dump() if routing_decision else None
+            )
+        except Exception as e:
+            print(f"協作履歴の保存に失敗: {str(e)}")
+
     def register_agent(self, agent_type: str, agent: BaseAgent):
         """
         エージェントを登録し、その能力定義をルーターに登録
@@ -316,6 +450,9 @@ class IntelligentMultiAgentOrchestrator:
             agent_type: エージェントタイプ
             agent: エージェントインスタンス
         """
+        # エージェントにマネージャーIDを設定
+        agent.agent_manager_id = self.manager_id
+        
         self.agents[agent_type] = agent
         
         # エージェント能力をルーターに登録
@@ -414,11 +551,21 @@ class IntelligentMultiAgentOrchestrator:
                     "result": json.loads(result)
                 })
         
+        # 協作履歴を保存
+        self._save_collaboration_history(
+            kwargs.get("session_id"),
+            kwargs.get("user_id"),
+            command,
+            routing_decision,
+            collaboration_results
+        )
+        
         return json.dumps({
             "collaboration_mode": True,
             "routing_decision": routing_decision.model_dump(),
             "collaboration_results": collaboration_results,
-            "final_message": "複数エージェント連携処理が完了しました"
+            "final_message": "複数エージェント連携処理が完了しました",
+            "agent_manager_id": self.manager_id
         }, ensure_ascii=False, indent=2)
     
     def get_all_agents_info(self) -> Dict[str, Any]:

@@ -127,11 +127,11 @@ def get_products(
 
 
 class PublishRequest(BaseModel):
-    ids: list[str]
+    jancodes: list[str]
 
 @router.post("/products/publish")
 def publish_products(data: PublishRequest, db: Session = Depends(get_db)):
-    products = db.query(Product).filter(Product.jancode.in_(data.ids)).all()
+    products = db.query(Product).filter(Product.jancode.in_(data.jancodes)).all()
     errors = []
     valid_ids = []
 

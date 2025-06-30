@@ -37,6 +37,9 @@ async def get_management_interface():
             body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }}
             .container {{ max-width: 1200px; margin: 0 auto; }}
             .header {{ background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .session-info {{ background: #e9ecef; padding: 10px 20px; border-radius: 6px; margin-bottom: 15px; font-size: 12px; color: #666; display: flex; justify-content: space-between; align-items: center; }}
+            .clear-history-btn {{ background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; }}
+            .clear-history-btn:hover {{ background: #c82333; }}
             .chat-interface {{ background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
             .input-row {{ display: flex; gap: 10px; align-items: center; margin-bottom: 15px; }}
             .config-row {{ display: flex; gap: 15px; align-items: center; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef; }}
@@ -80,6 +83,12 @@ async def get_management_interface():
             <div class="header">
                 <h1 style="margin: 0; color: #343a40;">🤖 EC商品管理システム</h1>
                 <p style="margin: 10px 0 0 0; color: #6c757d;">自然言語でAIエージェントと対話して商品を管理できます</p>
+            </div>
+            
+            <!-- セッション情報と履歴クリアボタン -->
+            <div class="session-info">
+                <span>📝 セッションID: <span id="sessionId"></span></span>
+                <button class="clear-history-btn" onclick="clearHistory()">New Chat</button>
             </div>
             
             <div class="chat-interface">
@@ -140,6 +149,57 @@ async def get_management_interface():
         <script>
             // LLM設定（設定ファイルから読み込み）
             const llmConfigs = {llm_js_config};
+            
+            // セッションID管理
+            let currentSessionId = localStorage.getItem('productManagementSessionId');
+            if (!currentSessionId) {{
+                currentSessionId = generateSessionId();
+                localStorage.setItem('productManagementSessionId', currentSessionId);
+            }}
+            document.getElementById('sessionId').textContent = currentSessionId;
+
+            // セッションID生成関数
+            function generateSessionId() {{
+                return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }}
+
+            // 会話履歴クリア機能
+            async function clearHistory() {{
+                if (!confirm('会話履歴をクリアしますが、よろしいでしょうか？')) {{
+                    return;
+                }}
+
+                try {{
+                    const response = await fetch(`/api/chat/history/${{currentSessionId}}`, {{
+                        method: 'DELETE'
+                    }});
+
+                    if (response.ok) {{
+                        const result = await response.json();
+                        
+                        // 新しいセッションIDを生成
+                        currentSessionId = generateSessionId();
+                        localStorage.setItem('productManagementSessionId', currentSessionId);
+                        document.getElementById('sessionId').textContent = currentSessionId;
+                        
+                        // 結果エリアをリセット
+                        document.getElementById('resultArea').innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: #6c757d;">
+                                <h4>✅ 会話履歴がクリアされました</h4>
+                                <p>新しいセッションが開始されました。<br>
+                                上記の入力欄にコマンドを入力してください。</p>
+                            </div>
+                        `;
+                        
+                        alert(`会話履歴をクリアしました（${{result.deleted_count}}件削除）`);
+                    }} else {{
+                        const error = await response.json();
+                        alert('履歴クリアに失敗しました: ' + (error.detail || 'Unknown error'));
+                    }}
+                }} catch (error) {{
+                    alert('通信エラーが発生しました: ' + error.message);
+                }}
+            }}
             
             // LLM選択時の状態更新
             document.getElementById('llmSelect').addEventListener('change', function() {{
@@ -210,6 +270,7 @@ async def get_management_interface():
                 document.getElementById('resultArea').innerHTML = `
                     <div class="loading">
                         <h4 style="margin-bottom: 15px;">🔄 処理中...</h4>
+                        <div style="font-size: 16px; color: #495057; margin-bottom: 8px;">セッション: ${{currentSessionId}}</div>
                         <div style="font-size: 16px; color: #495057; margin-bottom: 8px;">モード: ${{agentModeText}}</div>
                         <div style="font-size: 16px; color: #495057; margin-bottom: 8px;">LLM: ${{selectedOption.textContent}}</div>
                         <div style="font-size: 14px; color: #6c757d; margin-bottom: 30px;">コマンド: "${{command}}"</div>
@@ -226,7 +287,9 @@ async def get_management_interface():
                         headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify({{ 
                             message: command,
-                            llm_type: selectedLLM
+                            llm_type: selectedLLM,
+                            session_id: currentSessionId,  // セッションIDを追加
+                            user_id: 'default_user'      // 必要に応じて変更
                         }})
                     }});
                     
@@ -238,6 +301,12 @@ async def get_management_interface():
                     
                     // 結果を表示
                     let resultHTML = '';
+                    
+                    // セッション情報を表示
+                    resultHTML += `<div class="llm-info">
+                        <strong>📝 セッション情報:</strong> ${{currentSessionId}}
+                        <br><small>会話履歴が自動的に管理されています</small>
+                    </div>`;
                     
                     // エージェントモード情報を表示
                     resultHTML += `<div class="llm-info">

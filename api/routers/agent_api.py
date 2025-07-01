@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 import os
 import json
 from config.llm_config_loader import llm_config
+from utils.langfuse_handler import get_global_langfuse_handler
 
 router = APIRouter()
 
@@ -16,54 +17,54 @@ multi_agent_manager_instance = None
 def get_single_agent(llm_type: str = None):
     """単一エージェントインスタンスを取得または作成"""
     global single_agent_instance
-    
+
     # デフォルトモデルを設定
     if not llm_type:
         llm_type = llm_config.get_default_model()
-    
+
     # モデル利用可能性をチェック
     is_available, message = llm_config.validate_model_availability(llm_type)
     if not is_available:
         print(f"⚠️ {message}")
         # フォールバックモデルを使用
         llm_type = llm_config.get_default_model()
-    
+
     # エージェントが存在しない、または異なるLLMタイプの場合は再作成
     if single_agent_instance is None or single_agent_instance.llm_type != llm_type:
         api_key = os.getenv("OPENAI_API_KEY")
-        
+
         # 新しいエージェントインスタンスを作成
         single_agent_instance = ProductManagementAgent(api_key, llm_type=llm_type)
         print(f"🔄 単一エージェントを{llm_type}で初期化しました")
-    
+
     return single_agent_instance
 
 def get_multi_agent_manager(llm_type: str = None):
     """マルチエージェントマネージャーインスタンスを取得または作成"""
     global multi_agent_manager_instance
-    
+
     # デフォルトモデルを設定
     if not llm_type:
         llm_type = llm_config.get_default_model()
-    
+
     # モデル利用可能性をチェック
     is_available, message = llm_config.validate_model_availability(llm_type)
     if not is_available:
         print(f"⚠️ {message}")
         # フォールバックモデルを使用
         llm_type = llm_config.get_default_model()
-    
+
     # マネージャーが存在しない場合は作成
     if multi_agent_manager_instance is None:
         api_key = os.getenv("OPENAI_API_KEY")
-        
+
         # 新しいマネージャーインスタンスを作成
         multi_agent_manager_instance = ProductCenterMultiAgentManager(
             api_key=api_key, 
             llm_type=llm_type
         )
         print(f"🔄 マルチエージェントマネージャーを{llm_type}で初期化しました")
-    
+
     return multi_agent_manager_instance
 
 # === Request/Response Models ===
@@ -88,6 +89,8 @@ class ChatResponse(BaseModel):
     llm_type_used: Optional[str] = None
     agent_type: Optional[str] = None
     next_actions: Optional[str] = None
+    trace_id: Optional[str] = None  # 評価用のLangfuse trace ID
+    conversation_id: Optional[int] = None  # base_agentから取得した会話ID
 
 class MultiAgentChatResponse(ChatResponse):
     routing_decision: Optional[Dict[str, Any]] = None
@@ -124,10 +127,10 @@ async def single_agent_chat(request: ChatRequest):
     try:
         # リクエストからllm_typeを取得
         llm_type = getattr(request, 'llm_type', 'ollama')
-        
+
         # 単一エージェントを取得
         agent = get_single_agent(llm_type)
-        
+
         # コマンドを処理
         response = agent.process_command(
             request.message, 
@@ -135,10 +138,10 @@ async def single_agent_chat(request: ChatRequest):
             session_id=request.session_id,
             user_id=request.user_id
         )
-        
+
         # レスポンス解析と構築
         return _parse_agent_response(response, request)
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"単一エージェント処理に失敗しました: {str(e)}")
 
@@ -158,7 +161,7 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
     try:
         # マルチエージェントマネージャーを取得
         manager = get_multi_agent_manager(request.llm_type)
-        
+
         # 協作モードの判定
         if request.enable_collaboration:
             response = manager.process_collaborative_command(
@@ -177,10 +180,10 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
                 session_id=request.session_id,
                 user_id=request.user_id
             )
-        
+
         # マルチエージェントレスポンス解析
         return _parse_multi_agent_response(response, request)
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"マルチエージェント処理に失敗しました: {str(e)}")
 
@@ -190,7 +193,7 @@ async def analyze_routing(request: RoutingAnalysisRequest):
     try:
         manager = get_multi_agent_manager()
         routing_decision = manager.analyze_command_routing(request.command, request.context)
-        
+
         return RoutingAnalysisResponse(
             selected_agent=routing_decision.selected_agent,
             confidence=routing_decision.confidence,
@@ -314,7 +317,7 @@ async def switch_agent_llm(agent_type: str, new_llm_type: str):
             else:
                 # 特定のエージェントのLLMを切り替え（将来の拡張用）
                 success = True
-            
+
             if success:
                 return {"message": f"マルチエージェントの{agent_type}LLMを{new_llm_type}に切り替えました"}
             else:
@@ -342,7 +345,12 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
     llm_type_used = request.llm_type
     agent_type = None
     next_actions = None
-    
+    trace_id = None
+    conversation_id = None
+
+    # Langfuseハンドラーを取得
+    langfuse_handler = get_global_langfuse_handler()
+
     try:
         if response.strip().startswith('{'):
             response_data = json.loads(response)
@@ -352,12 +360,24 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
             llm_type_used = response_data.get("llm_type_used", request.llm_type)
             agent_type = response_data.get("agent_type")
             next_actions = response_data.get("next_actions")
-            
+            trace_id = response_data.get("trace_id")
+            conversation_id = response_data.get("conversation_id")  # base_agentから返されるconversation_idを取得
+
             # ユーザー向けメッセージを取得
             response = response_data.get("message", response)
     except (json.JSONDecodeError, KeyError):
         pass
-    
+
+    # trace_idが設定されていない場合、現在のtraceから取得を試行
+    if not trace_id and langfuse_handler.is_available():
+        try:
+            # CallbackHandlerから現在のtrace_idを取得
+            trace_id = langfuse_handler.get_current_trace_id()
+            if trace_id:
+                print(f"✅ 現在のtrace_idを取得しました: {trace_id}")
+        except Exception as e:
+            print(f"⚠️ trace_id取得エラー: {e}")
+
     return ChatResponse(
         response=response,
         session_id=request.session_id,
@@ -367,18 +387,20 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
         workflow_step=workflow_step,
         llm_type_used=llm_type_used,
         agent_type=agent_type,
-        next_actions=next_actions
+        next_actions=next_actions,
+        trace_id=trace_id,
+        conversation_id=conversation_id  # base_agentから取得したconversation_idを設定
     )
 
 def _parse_multi_agent_response(response: str, request: MultiAgentChatRequest) -> MultiAgentChatResponse:
     """マルチエージェントレスポンスを解析してMultiAgentChatResponseに変換"""
     # 基本レスポンスを解析
     base_response = _parse_agent_response(response, request)
-    
+
     routing_decision = None
     collaboration_mode = False
     collaboration_results = None
-    
+
     try:
         if response.strip().startswith('{'):
             response_data = json.loads(response)
@@ -387,7 +409,7 @@ def _parse_multi_agent_response(response: str, request: MultiAgentChatRequest) -
             collaboration_results = response_data.get("collaboration_results")
     except (json.JSONDecodeError, KeyError):
         pass
-    
+
     return MultiAgentChatResponse(
         response=base_response.response,
         session_id=base_response.session_id,
@@ -398,6 +420,7 @@ def _parse_multi_agent_response(response: str, request: MultiAgentChatRequest) -
         llm_type_used=base_response.llm_type_used,
         agent_type=base_response.agent_type,
         next_actions=base_response.next_actions,
+        trace_id=base_response.trace_id,
         routing_decision=routing_decision,
         collaboration_mode=collaboration_mode,
         collaboration_results=collaboration_results
@@ -419,12 +442,9 @@ async def execute_product_management_workflow(request: ChatRequest):
             session_id=request.session_id,
             llm_type=request.llm_type
         )
-        
-        return ChatResponse(
-            response=response,
-            session_id=request.session_id,
-            llm_type_used=request.llm_type
-        )
-        
+
+        # レスポンス解析と構築（trace_idを含む）
+        return _parse_agent_response(response, request)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ワークフロー実行に失敗しました: {str(e)}")

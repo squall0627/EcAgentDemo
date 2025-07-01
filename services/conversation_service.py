@@ -1,15 +1,13 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_, or_
+from sqlalchemy import desc, and_
 from datetime import datetime, timedelta
 from db.models.conversation_history import ConversationHistory
-from db.database import get_db
-import json
 
 
 class ConversationService:
     """会話履歴管理サービス"""
-    
+
     @staticmethod
     def save_conversation(
         db: Session,
@@ -30,7 +28,7 @@ class ConversationService:
         routing_decision: Optional[Dict[str, Any]] = None
     ) -> ConversationHistory:
         """会話履歴を保存"""
-        
+
         conversation = ConversationHistory(
             session_id=session_id,
             user_id=user_id,
@@ -48,13 +46,13 @@ class ConversationService:
             collaboration_agents=collaboration_agents,
             routing_decision=routing_decision
         )
-        
+
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
-        
+
         return conversation
-    
+
     @staticmethod
     def get_session_history(
         db: Session,
@@ -67,7 +65,7 @@ class ConversationService:
             .order_by(desc(ConversationHistory.created_at))\
             .limit(limit)\
             .all()
-    
+
     @staticmethod
     def get_cross_agent_history(
         db: Session,
@@ -78,7 +76,7 @@ class ConversationService:
     ) -> List[ConversationHistory]:
         """異なるエージェント間での履歴を取得"""
         query = db.query(ConversationHistory)
-        
+
         filters = []
         if session_id:
             filters.append(ConversationHistory.session_id == session_id)
@@ -86,14 +84,14 @@ class ConversationService:
             filters.append(ConversationHistory.user_id == user_id)
         if agent_manager_id:
             filters.append(ConversationHistory.agent_manager_id == agent_manager_id)
-        
+
         if filters:
             query = query.filter(and_(*filters))
-        
+
         return query.order_by(desc(ConversationHistory.created_at))\
             .limit(limit)\
             .all()
-    
+
     @staticmethod
     def get_agent_conversations(
         db: Session,
@@ -103,7 +101,7 @@ class ConversationService:
     ) -> List[ConversationHistory]:
         """特定エージェントの最近の会話を取得"""
         since = datetime.utcnow() - timedelta(hours=hours)
-        
+
         return db.query(ConversationHistory)\
             .filter(and_(
                 ConversationHistory.agent_type == agent_type,
@@ -112,7 +110,7 @@ class ConversationService:
             .order_by(desc(ConversationHistory.created_at))\
             .limit(limit)\
             .all()
-    
+
     @staticmethod
     def format_history_for_context(
         conversations: List[ConversationHistory],
@@ -120,7 +118,7 @@ class ConversationService:
     ) -> List[Dict[str, Any]]:
         """履歴をコンテキスト用フォーマットに変換"""
         formatted = []
-        
+
         for conv in conversations:
             entry = {
                 "timestamp": conv.created_at.isoformat(),
@@ -130,24 +128,24 @@ class ConversationService:
                 "message_type": conv.message_type,
                 "llm_type": conv.llm_type
             }
-            
+
             if include_html and conv.html_content:
                 entry["html_content"] = conv.html_content
-            
+
             if conv.context_data:
                 entry["context_data"] = conv.context_data
-            
+
             if conv.is_collaboration:
                 entry["collaboration_info"] = {
                     "is_collaboration": True,
                     "agents": conv.collaboration_agents,
                     "routing": conv.routing_decision
                 }
-            
+
             formatted.append(entry)
-        
+
         return formatted
-    
+
     @staticmethod
     def clean_old_conversations(
         db: Session,
@@ -155,11 +153,11 @@ class ConversationService:
     ) -> int:
         """古い会話履歴をクリーンアップ"""
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
+
         deleted_count = db.query(ConversationHistory)\
             .filter(ConversationHistory.created_at < cutoff_date)\
             .delete()
-        
+
         db.commit()
         return deleted_count
 
@@ -170,6 +168,39 @@ class ConversationService:
             deleted_count = db.query(ConversationHistory)\
                 .filter(ConversationHistory.session_id == session_id)\
                 .delete()
+            db.commit()
+            return deleted_count
+        except Exception as e:
+            db.rollback()
+            raise e
+
+    @staticmethod
+    def delete_conversations_by_id(
+        db: Session, 
+        session_id: str, 
+        conversation_id: int
+    ) -> int:
+        """指定されたconversation IDの履歴を削除（再生成用）"""
+        try:
+            # 指定されたconversation IDが存在するかチェック
+            target_conversation = db.query(ConversationHistory)\
+                .filter(and_(
+                    ConversationHistory.id == conversation_id,
+                    ConversationHistory.session_id == session_id
+                ))\
+                .first()
+
+            if not target_conversation:
+                return 0
+
+            # 指定されたIDより後の履歴を削除（IDが大きい = より新しい）
+            deleted_count = db.query(ConversationHistory)\
+                .filter(and_(
+                    ConversationHistory.session_id == session_id,
+                    ConversationHistory.id == conversation_id
+                ))\
+                .delete()
+
             db.commit()
             return deleted_count
         except Exception as e:

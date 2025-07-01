@@ -44,7 +44,7 @@ async def get_management_interface():
                 display: flex;
                 flex-direction: column;
             }}
-            
+
             .container {{ 
                 max-width: 1200px; 
                 margin: 0 auto; 
@@ -53,7 +53,7 @@ async def get_management_interface():
                 flex-direction: column;
                 min-height: 0; /* フレックスサブアイテムの縮小を許可 */
             }}
-            
+
             .header {{ 
                 background: white; 
                 padding: 20px; 
@@ -62,7 +62,7 @@ async def get_management_interface():
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
                 flex-shrink: 0; /* ヘッダーは縮小しない */
             }}
-            
+
             .session-info {{ 
                 background: #e9ecef; 
                 padding: 10px 20px; 
@@ -75,13 +75,13 @@ async def get_management_interface():
                 align-items: center;
                 flex-shrink: 0; /* セッション情報は縮小しない */
             }}
-            
+
             .session-actions {{
                 display: flex;
                 gap: 10px;
                 align-items: center;
             }}
-            
+
             .new-chat-btn {{ 
                 background: #28a745; 
                 color: white; 
@@ -92,7 +92,7 @@ async def get_management_interface():
                 font-size: 12px; 
             }}
             .new-chat-btn:hover {{ background: #218838; }}
-            
+
             .history-btn {{ 
                 background: #007bff; 
                 color: white; 
@@ -103,7 +103,7 @@ async def get_management_interface():
                 font-size: 12px; 
             }}
             .history-btn:hover {{ background: #0056b3; }}
-            
+
             /* 履歴サイドバーのスタイル */
             .history-sidebar {{
                 position: fixed;
@@ -118,11 +118,11 @@ async def get_management_interface():
                 display: flex;
                 flex-direction: column;
             }}
-            
+
             .history-sidebar.open {{
                 right: 0; /* 開いた状態では画面内に表示 */
             }}
-            
+
             .history-header {{
                 padding: 20px;
                 border-bottom: 1px solid #e9ecef;
@@ -131,7 +131,7 @@ async def get_management_interface():
                 align-items: center;
                 background: #f8f9fa;
             }}
-            
+
             .history-close-btn {{
                 background: #6c757d;
                 color: white;
@@ -142,17 +142,17 @@ async def get_management_interface():
                 font-size: 14px;
             }}
             .history-close-btn:hover {{ background: #5a6268; }}
-            
+
             .history-content {{
                 flex: 1;
                 overflow-y: auto;
                 padding: 20px;
             }}
-            
+
             .user-sessions {{
                 margin-bottom: 30px;
             }}
-            
+
             .user-header {{
                 font-size: 16px;
                 font-weight: bold;
@@ -161,7 +161,7 @@ async def get_management_interface():
                 padding-bottom: 5px;
                 border-bottom: 2px solid #007bff;
             }}
-            
+
             .session-item {{
                 background: #f8f9fa;
                 border: 1px solid #e9ecef;
@@ -171,29 +171,29 @@ async def get_management_interface():
                 cursor: pointer;
                 transition: background-color 0.2s;
             }}
-            
+
             .session-item:hover {{
                 background: #e9ecef;
             }}
-            
+
             .session-item.current {{
                 background: #d1ecf1;
                 border-color: #bee5eb;
             }}
-            
+
             .session-id {{
                 font-family: monospace;
                 font-size: 12px;
                 color: #6c757d;
                 margin-bottom: 5px;
             }}
-            
+
             .session-time {{
                 font-size: 11px;
                 color: #999;
                 margin-bottom: 5px;
             }}
-            
+
             .session-preview {{
                 font-size: 13px;
                 color: #495057;
@@ -204,13 +204,13 @@ async def get_management_interface():
                 -webkit-line-clamp: 2;
                 -webkit-box-orient: vertical;
             }}
-            
+
             .no-history {{
                 text-align: center;
                 color: #6c757d;
                 padding: 40px 20px;
             }}
-            
+
             /* オーバーレイ背景 */
             .history-overlay {{
                 position: fixed;
@@ -224,12 +224,12 @@ async def get_management_interface():
                 visibility: hidden;
                 transition: opacity 0.3s ease, visibility 0.3s ease;
             }}
-            
+
             .history-overlay.open {{
                 opacity: 1;
                 visibility: visible;
             }}
-            
+
             /* スクリーン高さに適応するチャットコンテナ */
             .chat-container {{ 
                 background: white; 
@@ -240,7 +240,7 @@ async def get_management_interface():
                 flex: 1; /* 残りのスペースを占有 */
                 min-height: 0; /* 縮小を許可 */
             }}
-            
+
             .chat-header {{ 
                 padding: 20px; 
                 border-bottom: 1px solid #e9ecef; 
@@ -248,7 +248,7 @@ async def get_management_interface():
                 border-radius: 8px 8px 0 0;
                 flex-shrink: 0; /* ヘッダーは縮小しない */
             }}
-            
+
             .config-row {{ 
                 display: flex; 
                 gap: 15px; 
@@ -256,7 +256,7 @@ async def get_management_interface():
                 margin-bottom: 15px; 
                 flex-wrap: wrap;
             }}
-            
+
             .chat-messages {{ 
                 flex: 1; 
                 overflow-y: auto; 
@@ -264,16 +264,16 @@ async def get_management_interface():
                 background: #fafafa;
                 min-height: 0; /* 縮小を許可 */
             }}
-            
+
             .message {{ 
                 margin-bottom: 20px; 
                 display: flex; 
                 align-items: flex-start; 
                 gap: 12px;
             }}
-            
+
             .message.user {{ flex-direction: row-reverse; }}
-            
+
             .message-avatar {{ 
                 width: 40px; 
                 height: 40px; 
@@ -284,17 +284,17 @@ async def get_management_interface():
                 font-size: 18px; 
                 flex-shrink: 0;
             }}
-            
+
             .user .message-avatar {{ 
                 background: #007bff; 
                 color: white; 
             }}
-            
+
             .assistant .message-avatar {{ 
                 background: #28a745; 
                 color: white; 
             }}
-            
+
             .message-content {{ 
                 max-width: 70%; 
                 padding: 12px 16px; 
@@ -303,30 +303,30 @@ async def get_management_interface():
                 word-wrap: break-word;
                 overflow-wrap: break-word;
             }}
-            
+
             .user .message-content {{ 
                 background: #007bff; 
                 color: white; 
                 border-bottom-right-radius: 4px;
             }}
-            
+
             .assistant .message-content {{ 
                 background: white; 
                 color: #333; 
                 border: 1px solid #e9ecef; 
                 border-bottom-left-radius: 4px;
             }}
-            
+
             .message-time {{ 
                 font-size: 11px; 
                 opacity: 0.7; 
                 margin-top: 4px; 
                 text-align: right;
             }}
-            
+
             .user .message-time {{ color: rgba(255,255,255,0.8); }}
             .assistant .message-time {{ color: #666; }}
-            
+
             .message-html-content {{ 
                 margin-top: 10px; 
                 border: 1px solid #ddd; 
@@ -335,7 +335,98 @@ async def get_management_interface():
                 background: #f8f9fa;
                 max-width: 100%;
             }}
-            
+
+            /* メッセージアクションボタンのスタイル */
+            .message-actions {{
+                display: flex;
+                gap: 6px;
+                margin-top: 8px;
+                justify-content: flex-start;
+                flex-wrap: wrap;
+            }}
+
+            .action-btn {{
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 28px;
+                height: 28px;
+            }}
+
+            .action-btn:hover {{
+                background: #e9ecef;
+                border-color: #dee2e6;
+                transform: translateY(-1px);
+            }}
+
+            .copy-btn:hover {{
+                background: #d1ecf1;
+                border-color: #bee5eb;
+                color: #0c5460;
+            }}
+
+            .regenerate-btn:hover {{
+                background: #fff3cd;
+                border-color: #ffeaa7;
+                color: #856404;
+            }}
+
+            .evaluation-btn {{
+                opacity: 0.7;
+            }}
+
+            .evaluation-btn:hover {{
+                opacity: 1;
+            }}
+
+            .good-btn:hover {{
+                background: #d4edda;
+                border-color: #c3e6cb;
+                color: #155724;
+            }}
+
+            .bad-btn:hover {{
+                background: #f8d7da;
+                border-color: #f5c6cb;
+                color: #721c24;
+            }}
+
+            .evaluation-btn.selected {{
+                opacity: 1;
+                font-weight: bold;
+            }}
+
+            .good-btn.selected {{
+                background: #d4edda;
+                border-color: #c3e6cb;
+                color: #155724;
+            }}
+
+            .bad-btn.selected {{
+                background: #f8d7da;
+                border-color: #f5c6cb;
+                color: #721c24;
+            }}
+
+            .action-btn:disabled {{
+                opacity: 0.5;
+                cursor: not-allowed;
+                transform: none;
+            }}
+
+            .action-btn:disabled:hover {{
+                background: #f8f9fa;
+                border-color: #e9ecef;
+                transform: none;
+            }}
+
             /* 複数行入力フィールドのスタイル */
             .chat-input-area {{ 
                 padding: 20px; 
@@ -344,18 +435,18 @@ async def get_management_interface():
                 border-radius: 0 0 8px 8px;
                 flex-shrink: 0; /* 入力エリアは縮小しない */
             }}
-            
+
             .input-container {{ 
                 display: flex; 
                 gap: 10px; 
                 align-items: flex-end; 
             }}
-            
+
             .input-wrapper {{ 
                 flex: 1;
                 position: relative;
             }}
-            
+
             .chat-input {{ 
                 width: 100%; 
                 min-height: 40px;
@@ -372,16 +463,16 @@ async def get_management_interface():
                 transition: border-color 0.3s;
                 overflow-y: auto; /* 垂直スクロールを許可 */
             }}
-            
+
             .chat-input:focus {{ 
                 border-color: #007bff; 
             }}
-            
+
             .chat-input::placeholder {{
                 color: #999;
                 font-style: italic;
             }}
-            
+
             .send-button {{ 
                 position: absolute;
                 right: 8px;
@@ -399,23 +490,23 @@ async def get_management_interface():
                 font-size: 16px;
                 transition: background-color 0.3s;
             }}
-            
+
             .send-button:hover {{ 
                 background: #0056b3; 
             }}
-            
+
             .send-button:disabled {{ 
                 background: #6c757d; 
                 cursor: not-allowed; 
             }}
-            
+
             .input-hint {{
                 font-size: 11px;
                 color: #999;
                 margin-top: 5px;
                 text-align: center;
             }}
-            
+
             .llm-select {{ 
                 padding: 8px 12px; 
                 font-size: 12px; 
@@ -424,7 +515,7 @@ async def get_management_interface():
                 border-radius: 4px; 
                 cursor: pointer;
             }}
-            
+
             .agent-mode-select {{ 
                 padding: 8px 12px; 
                 font-size: 12px; 
@@ -433,14 +524,14 @@ async def get_management_interface():
                 border-radius: 4px; 
                 cursor: pointer;
             }}
-            
+
             .config-label {{ 
                 font-size: 12px; 
                 font-weight: 600; 
                 color: #495057; 
                 white-space: nowrap;
             }}
-            
+
             .llm-status {{ 
                 font-size: 11px; 
                 color: #666; 
@@ -448,37 +539,37 @@ async def get_management_interface():
                 align-items: center; 
                 gap: 6px;
             }}
-            
+
             .llm-indicator {{ 
                 width: 8px; 
                 height: 8px; 
                 border-radius: 50%; 
             }}
-            
+
             .agent-mode-indicator {{ 
                 width: 8px; 
                 height: 8px; 
                 border-radius: 50%; 
             }}
-            
+
             .single-agent {{ background-color: #28a745; }}
             .multi-agent {{ background-color: #ffc107; }}
             .ollama {{ background-color: #10b981; }}
             .openai {{ background-color: #3b82f6; }}
             .anthropic {{ background-color: #8b5cf6; }}
-            
+
             .typing-indicator {{ 
                 display: flex; 
                 align-items: center; 
                 gap: 12px; 
                 margin-bottom: 20px;
             }}
-            
+
             .typing-indicator .message-avatar {{ 
                 background: #28a745; 
                 color: white; 
             }}
-            
+
             .typing-dots {{ 
                 background: white; 
                 border: 1px solid #e9ecef; 
@@ -487,7 +578,7 @@ async def get_management_interface():
                 display: flex; 
                 gap: 4px;
             }}
-            
+
             .typing-dot {{ 
                 width: 8px; 
                 height: 8px; 
@@ -495,21 +586,21 @@ async def get_management_interface():
                 border-radius: 50%; 
                 animation: typing 1.4s infinite;
             }}
-            
+
             .typing-dot:nth-child(2) {{ animation-delay: 0.2s; }}
             .typing-dot:nth-child(3) {{ animation-delay: 0.4s; }}
-            
+
             @keyframes typing {{
                 0%, 60%, 100% {{ transform: translateY(0); opacity: 0.5; }}
                 30% {{ transform: translateY(-10px); opacity: 1; }}
             }}
-            
+
             .welcome-message {{ 
                 text-align: center; 
                 padding: 60px 20px; 
                 color: #6c757d; 
             }}
-            
+
             .examples {{ 
                 background: #f8f9fa; 
                 padding: 15px; 
@@ -517,32 +608,32 @@ async def get_management_interface():
                 margin-top: 15px; 
                 font-size: 12px;
             }}
-            
+
             .examples ul {{ 
                 margin: 8px 0; 
                 padding-left: 20px; 
             }}
-            
+
             .examples li {{ 
                 margin: 4px 0; 
                 color: #6c757d; 
             }}
-            
+
             /* カスタムスクロールバー */
             .chat-messages::-webkit-scrollbar {{ width: 6px; }}
             .chat-messages::-webkit-scrollbar-track {{ background: #f1f1f1; }}
             .chat-messages::-webkit-scrollbar-thumb {{ background: #c1c1c1; border-radius: 3px; }}
             .chat-messages::-webkit-scrollbar-thumb:hover {{ background: #a8a8a8; }}
-            
+
             .history-content::-webkit-scrollbar {{ width: 6px; }}
             .history-content::-webkit-scrollbar-track {{ background: #f1f1f1; }}
             .history-content::-webkit-scrollbar-thumb {{ background: #c1c1c1; border-radius: 3px; }}
             .history-content::-webkit-scrollbar-thumb:hover {{ background: #a8a8a8; }}
-            
+
             .chat-input::-webkit-scrollbar {{ width: 4px; }}
             .chat-input::-webkit-scrollbar-track {{ background: #f1f1f1; }}
             .chat-input::-webkit-scrollbar-thumb {{ background: #c1c1c1; border-radius: 2px; }}
-            
+
             /* レスポンシブデザイン */
             @media (max-width: 768px) {{
                 body {{ padding: 10px; }}
@@ -552,30 +643,53 @@ async def get_management_interface():
                 .header {{ padding: 15px; }}
                 .chat-header {{ padding: 15px; }}
                 .chat-input-area {{ padding: 15px; }}
-                
+
                 .history-sidebar {{
                     width: 100%;
                     right: -100%;
                 }}
-                
+
                 .session-actions {{
                     flex-direction: column;
                     gap: 5px;
                 }}
             }}
-            
+
             @media (max-height: 600px) {{
                 .header {{ padding: 10px; margin-bottom: 10px; }}
                 .session-info {{ padding: 8px 15px; margin-bottom: 10px; }}
                 .chat-header {{ padding: 15px; }}
                 .examples {{ display: none; }} /* 小さいスクリーン高さ時に例を非表示 */
             }}
+
+            /* 一時メッセージのアニメーション */
+            @keyframes slideInRight {{
+                from {{
+                    transform: translateX(100%);
+                    opacity: 0;
+                }}
+                to {{
+                    transform: translateX(0);
+                    opacity: 1;
+                }}
+            }}
+
+            @keyframes slideOutRight {{
+                from {{
+                    transform: translateX(0);
+                    opacity: 1;
+                }}
+                to {{
+                    transform: translateX(100%);
+                    opacity: 0;
+                }}
+            }}
         </style>
     </head>
     <body>
         <!-- 履歴サイドバー用オーバーレイ -->
         <div class="history-overlay" id="historyOverlay" onclick="closeHistorySidebar()"></div>
-        
+
         <!-- 履歴サイドバー -->
         <div class="history-sidebar" id="historySidebar">
             <div class="history-header">
@@ -586,13 +700,13 @@ async def get_management_interface():
                 <div class="no-history">履歴を読み込み中...</div>
             </div>
         </div>
-        
+
         <div class="container">
             <div class="header">
                 <h1 style="margin: 0; color: #343a40;">🤖 EC商品管理システム</h1>
                 <p style="margin: 10px 0 0 0; color: #6c757d;">自然言語でAIエージェントと対話して商品を管理できます</p>
             </div>
-            
+
             <!-- セッション情報と履歴クリアボタン -->
             <div class="session-info">
                 <span>📝 セッションID: <span id="sessionId"></span></span>
@@ -601,7 +715,7 @@ async def get_management_interface():
                     <button class="new-chat-btn" onclick="startNewChat()">新しいチャット</button>
                 </div>
             </div>
-            
+
             <!-- チャットコンテナ -->
             <div class="chat-container">
                 <!-- チャットヘッダー（設定エリア） -->
@@ -612,18 +726,18 @@ async def get_management_interface():
                             <option value="single" selected>単一エージェント</option>
                             <option value="multi">マルチエージェント</option>
                         </select>
-                        
+
                         <div class="config-label">🤖 LLM:</div>
                         <select id="llmSelect" class="llm-select">
                             {llm_options}
                         </select>
-                        
+
                         <div class="llm-status">
                             <span class="llm-indicator" id="llmIndicator"></span>
                             <span id="llmStatus">読み込み中...</span>
                         </div>
                     </div>
-                    
+
                     <div class="examples">
                         <strong>💡 使用例:</strong>
                         <ul>
@@ -633,7 +747,7 @@ async def get_management_interface():
                         </ul>
                     </div>
                 </div>
-                
+
                 <!-- チャットメッセージエリア -->
                 <div id="chatMessages" class="chat-messages">
                     <div class="welcome-message">
@@ -642,7 +756,7 @@ async def get_management_interface():
                         システムが自動的に適切な操作画面を生成します。</p>
                     </div>
                 </div>
-                
+
                 <!-- チャット入力エリア -->
                 <div class="chat-input-area">
                     <div class="input-container">
@@ -664,14 +778,14 @@ async def get_management_interface():
                 </div>
             </div>
         </div>
-        
+
         <script>
             // LLM設定（設定ファイルから読み込み）
             const llmConfigs = {llm_js_config};
-            
+
             // ユーザーID（実際のシステムでは認証から取得）
             const currentUserId = 'default_user';
-            
+
             // セッションID管理
             let currentSessionId = localStorage.getItem('productManagementSessionId');
             if (!currentSessionId) {{
@@ -680,13 +794,13 @@ async def get_management_interface():
             }}
             document.getElementById('sessionId').textContent = currentSessionId;
 
-            // Mac系统专用的IME处理
+            // Mac専用のIME処理
             // IME合成状態の管理変数
             let isComposingText = false;
             let pendingSubmit = false;
             let lastCompositionValue = '';
-            
-            // 检测Mac系统
+
+            // Macシステムの検出
             const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
             console.log('Detected platform:', navigator.platform, 'isMac:', isMac);
 
@@ -706,18 +820,18 @@ async def get_management_interface():
             function openHistorySidebar() {{
                 const sidebar = document.getElementById('historySidebar');
                 const overlay = document.getElementById('historyOverlay');
-                
+
                 sidebar.classList.add('open');
                 overlay.classList.add('open');
-                
+
                 // 履歴を読み込み
                 loadAllHistory();
             }}
-            
+
             function closeHistorySidebar() {{
                 const sidebar = document.getElementById('historySidebar');
                 const overlay = document.getElementById('historyOverlay');
-                
+
                 sidebar.classList.remove('open');
                 overlay.classList.remove('open');
             }}
@@ -728,7 +842,7 @@ async def get_management_interface():
                 currentSessionId = generateSessionId();
                 localStorage.setItem('productManagementSessionId', currentSessionId);
                 document.getElementById('sessionId').textContent = currentSessionId;
-                
+
                 // チャットメッセージエリアをクリア
                 const chatMessages = document.getElementById('chatMessages');
                 chatMessages.innerHTML = `
@@ -738,14 +852,14 @@ async def get_management_interface():
                         システムが自動的に適切な操作画面を生成します。</p>
                     </div>
                 `;
-                
+
                 // 入力フィールドをクリア
                 const commandInput = document.getElementById('commandInput');
                 commandInput.value = '';
                 autoResize(commandInput);
                 commandInput.focus();
             }}
-            
+
             // 全ユーザーの履歴を読み込む関数
             async function loadAllHistory() {{
                 try {{
@@ -771,11 +885,11 @@ async def get_management_interface():
                     `;
                 }}
             }}
-            
+
             // 履歴を表示する関数
             function displayHistory(userSessions) {{
                 const historyContent = document.getElementById('historyContent');
-                
+
                 if (!userSessions || userSessions.length === 0) {{
                     historyContent.innerHTML = `
                         <div class="no-history">
@@ -786,25 +900,25 @@ async def get_management_interface():
                     `;
                     return;
                 }}
-                
+
                 let historyHtml = '';
-                
+
                 userSessions.forEach(userSession => {{
                     historyHtml += `
                         <div class="user-sessions">
                             <div class="user-header">👤 ユーザー: ${{userSession.user_id}}</div>
                     `;
-                    
+
                     userSession.sessions.forEach(session => {{
                         const isCurrentSession = session.session_id === currentSessionId;
                         const sessionClass = isCurrentSession ? 'session-item current' : 'session-item';
-                        
+
                         // 最新のメッセージプレビューを作成
                         const latestMessage = session.latest_message;
                         const previewText = latestMessage ? 
                             latestMessage.substring(0, 100) + (latestMessage.length > 100 ? '...' : '') :
                             '新しいセッション';
-                        
+
                         historyHtml += `
                             <div class="${{sessionClass}}" onclick="loadSession('${{session.session_id}}')">
                                 <div class="session-id">${{session.session_id}}</div>
@@ -816,13 +930,13 @@ async def get_management_interface():
                             </div>
                         `;
                     }});
-                    
+
                     historyHtml += '</div>';
                 }});
-                
+
                 historyContent.innerHTML = historyHtml;
             }}
-            
+
             // セッションを読み込む関数
             async function loadSession(sessionId) {{
                 if (sessionId === currentSessionId) {{
@@ -830,35 +944,35 @@ async def get_management_interface():
                     closeHistorySidebar();
                     return;
                 }}
-                
+
                 try {{
                     // セッションIDを切り替え
                     currentSessionId = sessionId;
                     localStorage.setItem('productManagementSessionId', currentSessionId);
                     document.getElementById('sessionId').textContent = currentSessionId;
-                    
+
                     // 会話履歴を読み込み
                     await loadConversationHistory();
-                    
+
                     // サイドバーを閉じる
                     closeHistorySidebar();
-                    
+
                     // 入力フィールドにフォーカス
                     document.getElementById('commandInput').focus();
-                    
+
                 }} catch (error) {{
                     console.error('セッション読み込みエラー:', error);
                     alert('セッションの読み込みに失敗しました');
                 }}
             }}
-            
+
             // タイムスタンプをフォーマットする関数
             function formatTimestamp(timestamp) {{
                 const date = new Date(timestamp);
                 const now = new Date();
                 const diffMs = now - date;
                 const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                
+
                 if (diffDays === 0) {{
                     return '今日 ' + date.toLocaleTimeString('ja-JP', {{hour: '2-digit', minute: '2-digit'}});
                 }} else if (diffDays === 1) {{
@@ -871,46 +985,109 @@ async def get_management_interface():
             }}
 
             // チャットメッセージを追加する関数
-            function addMessage(content, isUser = false, timestamp = null, hasHtml = false, htmlContent = '') {{
+            function addMessage(content, isUser = false, timestamp = null, hasHtml = false, htmlContent = '', traceId = null, evaluationStatus = null, conversationId = null) {{
                 const chatMessages = document.getElementById('chatMessages');
                 const messageTime = timestamp ? new Date(timestamp).toLocaleString('ja-JP') : new Date().toLocaleString('ja-JP');
-                
+
                 // ウェルカムメッセージを削除
                 const welcomeMessage = chatMessages.querySelector('.welcome-message');
                 if (welcomeMessage) {{
                     welcomeMessage.remove();
                 }}
-                
+
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${{isUser ? 'user' : 'assistant'}}`;
-                
+
+                // conversation_idを保存（エージェントメッセージの場合）
+                if (!isUser && conversationId) {{
+                    messageDiv.setAttribute('data-conversation-id', conversationId);
+                }}
+
                 const avatarDiv = document.createElement('div');
                 avatarDiv.className = 'message-avatar';
                 avatarDiv.textContent = isUser ? '👤' : '🤖';
-                
+
                 const contentDiv = document.createElement('div');
                 contentDiv.className = 'message-content';
-                
+
                 const textDiv = document.createElement('div');
                 textDiv.style.whiteSpace = 'pre-wrap';
                 textDiv.textContent = content;
+                textDiv.className = 'message-text';
                 contentDiv.appendChild(textDiv);
-                
+
                 if (hasHtml && htmlContent) {{
                     const htmlDiv = document.createElement('div');
                     htmlDiv.className = 'message-html-content';
                     htmlDiv.innerHTML = htmlContent;
                     contentDiv.appendChild(htmlDiv);
                 }}
-                
+
+                // エージェントメッセージの場合、アクションボタンを追加
+                if (!isUser) {{
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'message-actions';
+
+                    // コピーボタン
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'action-btn copy-btn';
+                    copyBtn.innerHTML = '📋';
+                    copyBtn.title = 'テキストをコピー';
+                    copyBtn.onclick = () => copyMessageText(content);
+                    actionsDiv.appendChild(copyBtn);
+
+                    // 再生成ボタン
+                    const regenerateBtn = document.createElement('button');
+                    regenerateBtn.className = 'action-btn regenerate-btn';
+                    regenerateBtn.innerHTML = '🔄';
+                    regenerateBtn.title = '応答を再生成';
+                    regenerateBtn.onclick = () => regenerateResponse(messageDiv);
+                    actionsDiv.appendChild(regenerateBtn);
+
+                    // 評価ボタン（traceIdがある場合のみ）
+                    if (traceId) {{
+                        const goodBtn = document.createElement('button');
+                        goodBtn.className = 'action-btn evaluation-btn good-btn';
+                        goodBtn.innerHTML = '👍';
+                        goodBtn.title = '良い回答';
+                        goodBtn.onclick = () => evaluateResponse(traceId, 'good', goodBtn);
+
+                        const badBtn = document.createElement('button');
+                        badBtn.className = 'action-btn evaluation-btn bad-btn';
+                        badBtn.innerHTML = '👎';
+                        badBtn.title = '悪い回答';
+                        badBtn.onclick = () => evaluateResponse(traceId, 'bad', badBtn);
+
+                        // 評価状態に基づいてボタンの状態を設定
+                        if (evaluationStatus) {{
+                            const evaluatedStatus = evaluationStatus.status;
+
+                            if (evaluatedStatus === 'good') {{
+                                goodBtn.classList.add('selected');
+                                goodBtn.disabled = true;
+                                badBtn.disabled = true;
+                            }} else if (evaluatedStatus === 'bad') {{
+                                badBtn.classList.add('selected');
+                                badBtn.disabled = true;
+                                goodBtn.disabled = true;
+                            }}
+                        }}
+
+                        actionsDiv.appendChild(goodBtn);
+                        actionsDiv.appendChild(badBtn);
+                    }}
+
+                    contentDiv.appendChild(actionsDiv);
+                }}
+
                 const timeDiv = document.createElement('div');
                 timeDiv.className = 'message-time';
                 timeDiv.textContent = messageTime;
                 contentDiv.appendChild(timeDiv);
-                
+
                 messageDiv.appendChild(avatarDiv);
                 messageDiv.appendChild(contentDiv);
-                
+
                 chatMessages.appendChild(messageDiv);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }}
@@ -918,15 +1095,15 @@ async def get_management_interface():
             // タイピングインジケーターを表示
             function showTypingIndicator() {{
                 const chatMessages = document.getElementById('chatMessages');
-                
+
                 const typingDiv = document.createElement('div');
                 typingDiv.id = 'typingIndicator';
                 typingDiv.className = 'typing-indicator';
-                
+
                 const avatarDiv = document.createElement('div');
                 avatarDiv.className = 'message-avatar';
                 avatarDiv.textContent = '🤖';
-                
+
                 const dotsDiv = document.createElement('div');
                 dotsDiv.className = 'typing-dots';
                 for (let i = 0; i < 3; i++) {{
@@ -934,10 +1111,10 @@ async def get_management_interface():
                     dot.className = 'typing-dot';
                     dotsDiv.appendChild(dot);
                 }}
-                
+
                 typingDiv.appendChild(avatarDiv);
                 typingDiv.appendChild(dotsDiv);
-                
+
                 chatMessages.appendChild(typingDiv);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }}
@@ -958,20 +1135,23 @@ async def get_management_interface():
                         const data = await response.json();
                         const chatMessages = document.getElementById('chatMessages');
                         chatMessages.innerHTML = '';
-                        
+
                         if (data.conversations && data.conversations.length > 0) {{
                             // 履歴を時間順（古い順）にソート
                             const sortedConversations = data.conversations.sort((a, b) => 
                                 new Date(a.created_at) - new Date(b.created_at)
                             );
-                            
+
                             sortedConversations.forEach(conv => {{
                                 // ユーザーメッセージを追加
                                 addMessage(conv.user_message, true, conv.created_at);
-                                
+
                                 // エージェントレスポンスを追加
                                 const hasHtml = conv.html_content && conv.html_content.trim() !== '';
-                                addMessage(conv.agent_response, false, conv.created_at, hasHtml, conv.html_content);
+                                const traceId = conv.trace_id || null;
+                                const evaluationStatus = conv.evaluation_status || null;
+                                const conversationId = conv.id || null;
+                                addMessage(conv.agent_response, false, conv.created_at, hasHtml, conv.html_content, traceId, evaluationStatus, conversationId);
                             }});
                         }} else {{
                             chatMessages.innerHTML = `
@@ -994,31 +1174,31 @@ async def get_management_interface():
                 const command = commandInput.value.trim();
                 const selectedLLM = document.getElementById('llmSelect').value;
                 const selectedAgentMode = document.getElementById('agentModeSelect').value;
-                
+
                 if (!command) {{
                     alert('メッセージを入力してください');
                     return;
                 }}
-                
+
                 // ボタンを無効化
                 const sendBtn = document.getElementById('sendBtn');
                 sendBtn.disabled = true;
                 sendBtn.textContent = '...';
-                
+
                 // ユーザーメッセージを表示
                 addMessage(command, true);
-                
+
                 // 入力欄をクリア・リセット
                 commandInput.value = '';
                 autoResize(commandInput);
-                
+
                 // タイピングインジケーターを表示
                 showTypingIndicator();
-                
+
                 try {{
                     const apiEndpoint = selectedAgentMode === 'single' ? 
                         '/api/agent/single-agent/chat' : '/api/agent/multi-agent/chat';
-                    
+
                     const response = await fetch(apiEndpoint, {{
                         method: 'POST',
                         headers: {{ 'Content-Type': 'application/json' }},
@@ -1029,22 +1209,24 @@ async def get_management_interface():
                             user_id: currentUserId
                         }})
                     }});
-                    
+
                     if (!response.ok) {{
                         throw new Error(`HTTP error! status: ${{response.status}}`);
                     }}
-                    
+
                     const result = await response.json();
-                    
+
                     // タイピングインジケーターを非表示
                     hideTypingIndicator();
-                    
+
                     // エージェントレスポンスを表示
                     let responseText = result.response || result.message || 'レスポンスを受信しました';
                     const hasHtml = result.html_content && result.html_content.trim() !== '';
-                    
-                    addMessage(responseText, false, null, hasHtml, result.html_content);
-                    
+                    const traceId = result.trace_id || null;
+                    const conversationId = result.conversation_id || null;
+
+                    addMessage(responseText, false, null, hasHtml, result.html_content, traceId, null, conversationId);
+
                 }} catch (error) {{
                     console.error('Error:', error);
                     hideTypingIndicator();
@@ -1056,41 +1238,247 @@ async def get_management_interface():
                     commandInput.focus(); // 入力欄にフォーカスを戻す
                 }}
             }}
-            
+
             // LLM選択時の状態更新
             function updateLLMStatus() {{
                 const selectedValue = document.getElementById('llmSelect').value;
                 const selectedOption = document.getElementById('llmSelect').options[document.getElementById('llmSelect').selectedIndex];
-                
+
                 const provider = selectedOption.getAttribute('data-provider');
                 const color = selectedOption.getAttribute('data-color');
-                
+
                 const indicator = document.getElementById('llmIndicator');
                 const status = document.getElementById('llmStatus');
-                
+
                 indicator.className = `llm-indicator ${{color}}`;
                 status.textContent = selectedOption.textContent.replace(/^[🦙🤖🧠]\\s*/, '');
             }}
-            
-            // Mac系统专用的IME处理函数
+
+            // メッセージテキストをコピーする関数
+            async function copyMessageText(text) {{
+                try {{
+                    await navigator.clipboard.writeText(text);
+                    // 一時的な成功メッセージを表示
+                    showTemporaryMessage('📋 テキストをコピーしました', 'success');
+                }} catch (error) {{
+                    console.error('コピーエラー:', error);
+                    // フォールバック: テキストエリアを使用
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {{
+                        document.execCommand('copy');
+                        showTemporaryMessage('📋 テキストをコピーしました', 'success');
+                    }} catch (fallbackError) {{
+                        showTemporaryMessage('❌ コピーに失敗しました', 'error');
+                    }}
+                    document.body.removeChild(textArea);
+                }}
+            }}
+
+            // 応答を再生成する関数
+            async function regenerateResponse(messageElement) {{
+                try {{
+                    // 最後のユーザーメッセージを取得
+                    const userMessages = document.querySelectorAll('.message.user .message-text');
+                    if (userMessages.length === 0) {{
+                        showTemporaryMessage('❌ 再生成するメッセージが見つかりません', 'error');
+                        return;
+                    }}
+
+                    const lastUserMessage = userMessages[userMessages.length - 1].textContent;
+                    const selectedLLM = document.getElementById('llmSelect').value;
+                    const selectedAgentMode = document.getElementById('agentModeSelect').value;
+
+                    // conversation_idを取得
+                    const conversationId = messageElement.getAttribute('data-conversation-id');
+                    if (!conversationId) {{
+                        showTemporaryMessage('❌ 会話IDが見つかりません', 'error');
+                        return;
+                    }}
+
+                    // 再生成ボタンを無効化
+                    const regenerateBtn = messageElement.querySelector('.regenerate-btn');
+                    if (regenerateBtn) {{
+                        regenerateBtn.disabled = true;
+                        regenerateBtn.innerHTML = '⏳';
+                    }}
+
+                    // APIを呼び出して応答を再生成
+                    const formData = new FormData();
+                    formData.append('query', lastUserMessage);
+                    formData.append('session_id', currentSessionId);
+                    formData.append('user_id', currentUserId);
+                    formData.append('agent_type', selectedAgentMode);
+                    formData.append('conversation_id', conversationId);
+                    formData.append('llm_type', selectedLLM);
+
+                    const response = await fetch('/api/chat/regenerate_response', {{
+                        method: 'POST',
+                        body: formData
+                    }});
+
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! status: ${{response.status}}`);
+                    }}
+
+                    const result = await response.json();
+
+                    // 指定されたconversation_idより後のメッセージを削除
+                    const chatMessages = document.getElementById('chatMessages');
+                    const allMessages = chatMessages.querySelectorAll('.message.assistant');
+                    let shouldRemove = false;
+
+                    // 現在のメッセージから後のメッセージを削除
+                    allMessages.forEach(msg => {{
+                        if (msg === messageElement) {{
+                            shouldRemove = true;
+                        }}
+                        if (shouldRemove) {{
+                            msg.remove();
+                        }}
+                    }});
+
+                    // 新しい応答を追加
+                    const hasHtml = result.html_content && result.html_content.trim() !== '';
+                    const traceId = result.trace_id || null;
+                    const newConversationId = result.conversation_id || null;
+
+                    addMessage(result.response, false, null, hasHtml, result.html_content, traceId, null, newConversationId);
+
+                    showTemporaryMessage('🔄 応答を再生成しました', 'success');
+
+                }} catch (error) {{
+                    console.error('再生成エラー:', error);
+                    showTemporaryMessage('❌ 再生成に失敗しました', 'error');
+                }} finally {{
+                    // ボタンを再有効化
+                    const regenerateBtn = messageElement.querySelector('.regenerate-btn');
+                    if (regenerateBtn) {{
+                        regenerateBtn.disabled = false;
+                        regenerateBtn.innerHTML = '🔄';
+                    }}
+                }}
+            }}
+
+            // 応答を評価する関数
+            async function evaluateResponse(traceId, evaluation, buttonElement) {{
+                try {{
+                    // 既に評価済みかチェック
+                    const messageElement = buttonElement.closest('.message');
+                    const evaluationBtns = messageElement.querySelectorAll('.evaluation-btn');
+                    const alreadyEvaluated = Array.from(evaluationBtns).some(btn => btn.disabled && btn.classList.contains('selected'));
+
+                    if (alreadyEvaluated) {{
+                        showTemporaryMessage('⚠️ この応答は既に評価済みです', 'info');
+                        return;
+                    }}
+
+                    // 他の評価ボタンの選択状態をクリア
+                    evaluationBtns.forEach(btn => btn.classList.remove('selected'));
+
+                    // 現在のボタンを選択状態にする
+                    buttonElement.classList.add('selected');
+                    buttonElement.disabled = true;
+
+                    // APIを呼び出して評価を送信
+                    const formData = new FormData();
+                    formData.append('trace_id', traceId);
+                    formData.append('evaluation', evaluation);
+                    formData.append('user_id', currentUserId);
+
+                    const response = await fetch('/api/chat/evaluate_response', {{
+                        method: 'POST',
+                        body: formData
+                    }});
+
+                    if (!response.ok) {{
+                        throw new Error(`HTTP error! status: ${{response.status}}`);
+                    }}
+
+                    const result = await response.json();
+
+                    // 評価成功時：すべての評価ボタンを無効化
+                    evaluationBtns.forEach(btn => {{
+                        btn.disabled = true;
+                    }});
+
+                    const message = evaluation === 'good' ? 
+                        '👍 フィードバックを送信しました' : 
+                        '👎 フィードバックを送信しました';
+                    showTemporaryMessage(message, 'success');
+
+                }} catch (error) {{
+                    console.error('評価エラー:', error);
+                    showTemporaryMessage('❌ 評価の送信に失敗しました', 'error');
+
+                    // エラー時は選択状態をクリアして再有効化
+                    buttonElement.classList.remove('selected');
+                    buttonElement.disabled = false;
+                }}
+            }}
+
+            // 一時的なメッセージを表示する関数
+            function showTemporaryMessage(message, type = 'info') {{
+                // 既存の一時メッセージを削除
+                const existingMessage = document.querySelector('.temporary-message');
+                if (existingMessage) {{
+                    existingMessage.remove();
+                }}
+
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `temporary-message temporary-message-${{type}}`;
+                messageDiv.textContent = message;
+                messageDiv.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: ${{type === 'success' ? '#d4edda' : type === 'error' ? '#f8d7da' : '#d1ecf1'}};
+                    color: ${{type === 'success' ? '#155724' : type === 'error' ? '#721c24' : '#0c5460'}};
+                    border: 1px solid ${{type === 'success' ? '#c3e6cb' : type === 'error' ? '#f5c6cb' : '#bee5eb'}};
+                    border-radius: 6px;
+                    padding: 12px 16px;
+                    font-size: 14px;
+                    z-index: 10000;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    animation: slideInRight 0.3s ease;
+                `;
+
+                document.body.appendChild(messageDiv);
+
+                // 3秒後に自動削除
+                setTimeout(() => {{
+                    if (messageDiv.parentNode) {{
+                        messageDiv.style.animation = 'slideOutRight 0.3s ease';
+                        setTimeout(() => {{
+                            if (messageDiv.parentNode) {{
+                                messageDiv.remove();
+                            }}
+                        }}, 300);
+                    }}
+                }}, 3000);
+            }}
+
+            // Mac専用のIME処理関数
             function handleCompositionStart(e) {{
                 console.log('🎌 Mac Composition start:', e.type, e.data);
                 isComposingText = true;
                 pendingSubmit = false;
                 lastCompositionValue = e.target.value;
             }}
-            
+
             function handleCompositionUpdate(e) {{
                 console.log('🎌 Mac Composition update:', e.type, e.data);
                 isComposingText = true;
                 lastCompositionValue = e.target.value;
             }}
-            
+
             function handleCompositionEnd(e) {{
                 console.log('🎌 Mac Composition end:', e.type, e.data);
                 isComposingText = false;
-                
-                // Mac需要更长的延迟来确保合成完全结束
+
+                // Macでは合成が完全に終了するまでより長い遅延が必要
                 setTimeout(() => {{
                     if (pendingSubmit && !isComposingText) {{
                         console.log('🎌 Mac Executing deferred submit');
@@ -1099,13 +1487,13 @@ async def get_management_interface():
                             sendMessage();
                         }}
                     }}
-                }}, isMac ? 100 : 50); // Mac使用更长延迟
+                }}, isMac ? 100 : 50); // Macではより長い遅延を使用
             }}
-            
+
             function handleInput(e) {{
                 autoResize(e.target);
-                
-                // Mac系统额外的输入法检测
+
+                // Macシステム用の追加IME検出
                 if (isMac && e.inputType) {{
                     if (e.inputType.includes('composition') || 
                         e.inputType === 'insertCompositionText' ||
@@ -1115,66 +1503,66 @@ async def get_management_interface():
                     }}
                 }}
             }}
-            
+
             function handleKeyDown(e) {{
                 const isEnter = e.key === 'Enter' || e.keyCode === 13 || e.which === 13;
-                
+
                 if (isEnter) {{
                     if (e.shiftKey) {{
-                        // Shift+Enter: 换行
+                        // Shift+Enter: 改行
                         return;
                     }}
-                    
-                    // 执行发送
+
+                    // 送信を実行
                     e.preventDefault();
                     if (!document.getElementById('sendBtn').disabled) {{
                         sendMessage();
                     }}
                 }}
             }}
-            
+
             // イベントリスナー
             document.getElementById('llmSelect').addEventListener('change', updateLLMStatus);
-            
+
             // テキストエリアのイベントリスナー設定
             const commandInput = document.getElementById('commandInput');
-            
-            // 基本事件监听
-            // 额外的input事件监听，用于检测输入状态
+
+            // 基本イベントリスナー
+            // 入力状態を検出するための追加inputイベントリスナー
             commandInput.addEventListener('input', handleInput);
             commandInput.addEventListener('keypress', handleKeyDown);
-            
-            // IME事件监听（Mac优化）
+
+            // IMEイベントリスナー（Mac最適化）
             commandInput.addEventListener('compositionstart', handleCompositionStart);
             commandInput.addEventListener('compositionupdate', handleCompositionUpdate);
             commandInput.addEventListener('compositionend', handleCompositionEnd);
-            
-            // フォーカス事件
+
+            // フォーカスイベント
             // フォーカス時にプレースホルダーを更新
             commandInput.addEventListener('focus', function() {{
                 this.placeholder = 'メッセージを入力してください...';
             }});
-            
+
             commandInput.addEventListener('blur', function() {{
                 this.placeholder = 'メッセージを入力してください...';
             }});
-            
+
             // ESCキーでサイドバーを閉じる
             document.addEventListener('keydown', function(e) {{
                 if (e.key === 'Escape') {{
                     closeHistorySidebar();
                 }}
             }});
-            
+
             // 初期化
             updateLLMStatus();
-            
+
             // ページ読み込み時に会話履歴を読み込み
             window.addEventListener('load', function() {{
                 loadConversationHistory();
                 commandInput.focus(); // 入力欄にフォーカス
             }});
-            
+
             // ウィンドウリサイズ時の処理
             window.addEventListener('resize', function() {{
                 autoResize(commandInput);

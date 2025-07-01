@@ -18,23 +18,23 @@ except ImportError as e:
 
 class LangfuseHandler:
     """Langfuse管理用クラス - 複数のエージェントで再利用可能"""
-    
+
     def __init__(self, use_langfuse: bool = True):
         """Langfuse ハンドラーを初期化"""
         self.use_langfuse = use_langfuse and LANGFUSE_AVAILABLE
         self.langfuse_client = None
         self.callback_handler = None
-        
+
         if self.use_langfuse:
             self._initialize_langfuse()
-    
+
     def _initialize_langfuse(self):
         """Langfuse V3 を初期化"""
         try:
             public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
             secret_key = os.getenv("LANGFUSE_SECRET_KEY")
             host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-            
+
             if public_key and secret_key:
                 self.langfuse_client = Langfuse(
                     public_key=public_key,
@@ -49,11 +49,11 @@ class LangfuseHandler:
         except Exception as e:
             print(f"❌ Langfuse初期化に失敗しました: {e}")
             self.use_langfuse = False
-    
+
     def get_callback_handler(self) -> Optional[CallbackHandler]:
         """Langfuse CallbackHandlerを取得"""
         return self.callback_handler if self.use_langfuse else None
-    
+
     def get_config(self, step_name: str = None, session_id: str = None, user_id: str = None) -> Dict:
         """Langfuse設定を取得"""
         if self.use_langfuse and self.callback_handler:
@@ -66,11 +66,11 @@ class LangfuseHandler:
                 }
             }
         return {}
-    
+
     def is_available(self) -> bool:
         """Langfuseが利用可能かどうか"""
         return self.use_langfuse and self.callback_handler is not None
-    
+
     def observe_decorator(self, name: str):
         """observeデコレータを取得（利用可能な場合のみ）"""
         if LANGFUSE_AVAILABLE:
@@ -80,6 +80,29 @@ class LangfuseHandler:
             def dummy_decorator(func):
                 return func
             return dummy_decorator
+
+    def get_current_trace_id(self) -> Optional[str]:
+        """現在のtrace_idを取得（Langfuse V3対応）"""
+        if not self.is_available():
+            return None
+
+        try:
+            # CallbackHandlerからcurrent trace_idを取得
+            if hasattr(self.callback_handler, 'get_current_trace_id'):
+                return self.callback_handler.get_current_trace_id()
+
+            # 代替方法: CallbackHandlerの内部状態から取得
+            if hasattr(self.callback_handler, '_current_trace_id'):
+                return self.callback_handler._current_trace_id
+
+            # さらなる代替方法: langfuse clientから取得
+            if hasattr(self.langfuse_client, 'get_current_trace_id'):
+                return self.langfuse_client.get_current_trace_id()
+
+            return None
+        except Exception as e:
+            print(f"⚠️ trace_id取得エラー: {e}")
+            return None
 
 
 # グローバルなLangfuseハンドラーインスタンス（オプション）

@@ -32,5 +32,5 @@ class ConversationHistory(Base):
     routing_decision = Column(JSON, nullable=True)  # ルーティング決定情報
     
     # タイムスタンプ
-    created_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), index=True)  # 作成日時
-    updated_at = Column(DateTime, default=datetime.datetime.now(datetime.UTC), onupdate=datetime.datetime.now(datetime.UTC))  # 更新日時
+    created_at = Column(DateTime, default=datetime.datetime.now, index=True)  # 作成時間（ローカル時間）
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)  # 更新時間（ローカル時間）

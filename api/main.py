@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from api.routers import product_api, agent_api, html_api, top_page_api, chat_api
 from db.database import init_db
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +30,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 静的ファイルの設定（CSS、JS、画像などを提供）
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ルーター追加
 app.include_router(top_page_api.router, prefix="/api/top", tags=["top"])

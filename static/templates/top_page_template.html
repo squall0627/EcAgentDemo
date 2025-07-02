@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EC商品管理システム</title>
+    <!-- 外部CSSファイルの読み込み -->
+    <link rel="stylesheet" href="/static/css/top_page_styles.css">
+</head>
+<body>
+    <!-- 履歴サイドバー用オーバーレイ -->
+    <div class="history-overlay" id="historyOverlay" onclick="closeHistorySidebar()"></div>
+
+    <!-- 履歴サイドバー -->
+    <div class="history-sidebar" id="historySidebar">
+        <div class="history-header">
+            <h3 style="margin: 0;">📖 チャット履歴</h3>
+            <button class="history-close-btn" onclick="closeHistorySidebar()">×</button>
+        </div>
+        <div class="history-content" id="historyContent">
+            <div class="no-history">履歴を読み込み中...</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1 style="margin: 0; color: #343a40;">🤖 EC商品管理システム</h1>
+            <p style="margin: 10px 0 0 0; color: #6c757d;">自然言語でAIエージェントと対話して商品を管理できます</p>
+        </div>
+
+        <!-- セッション情報と履歴クリアボタン -->
+        <div class="session-info">
+            <span>📝 セッションID: <span id="sessionId"></span></span>
+            <div class="session-actions">
+                <button class="history-btn" onclick="openHistorySidebar()">履歴表示</button>
+                <button class="new-chat-btn" onclick="startNewChat()">新しいチャット</button>
+            </div>
+        </div>
+
+        <!-- チャットコンテナ -->
+        <div class="chat-container">
+            <!-- チャットヘッダー（設定エリア） -->
+            <div class="chat-header">
+                <div class="config-row">
+                    <div class="config-label">🧠 エージェント:</div>
+                    <select id="agentModeSelect" class="agent-mode-select">
+                        <option value="single" selected>単一エージェント</option>
+                        <option value="multi">マルチエージェント</option>
+                    </select>
+
+                    <div class="config-label">🤖 LLM:</div>
+                    <select id="llmSelect" class="llm-select">
+                        {{LLM_OPTIONS}}
+                    </select>
+
+                    <div class="llm-status">
+                        <span class="llm-indicator" id="llmIndicator"></span>
+                        <span id="llmStatus">読み込み中...</span>
+                    </div>
+                </div>
+
+                <div class="examples">
+                    <strong>💡 使用例:</strong>
+                    <ul>
+                        <li>"コーヒー商品を検索してください"</li>
+                        <li>"在庫が少ない商品を棚上げしてください"</li>
+                        <li>"JANコード123の商品のカテゴリーを設定してください"</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- チャットメッセージエリア -->
+            <div id="chatMessages" class="chat-messages">
+                <div class="welcome-message">
+                    <h4>👋 ようこそ！</h4>
+                    <p>下の入力欄にコマンドを入力して会話を始めてください。<br>
+                    システムが自動的に適切な操作画面を生成します。</p>
+                </div>
+            </div>
+
+            <!-- チャット入力エリア -->
+            <div class="chat-input-area">
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="commandInput" 
+                            class="chat-input" 
+                            placeholder="メッセージを入力してください..."
+                            maxlength="2000"
+                            rows="1"></textarea>
+                        <button id="sendBtn" class="send-button" onclick="sendMessage()" title="送信 (Enter)">
+                            ➤
+                        </button>
+                    </div>
+                </div>
+                <div class="input-hint">
+                    Shift+Enter: 改行 | Enter: 送信 | 最大2000文字
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // LLM設定（設定ファイルから読み込み）
+        const llmConfigs = "{{LLM_JS_CONFIG}}";
+
+        // ユーザーID（実際のシステムでは認証から取得）
+        const currentUserId = 'default_user';
+
+        // セッションID管理
+        let currentSessionId = localStorage.getItem('productManagementSessionId');
+        if (!currentSessionId) {
+            currentSessionId = generateSessionId();
+            localStorage.setItem('productManagementSessionId', currentSessionId);
+        }
+        document.getElementById('sessionId').textContent = currentSessionId;
+
+        // IME入力状態の管理
+        let isComposing = false;
+
+        // セッションID生成関数
+        function generateSessionId() {
+            return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // 新しいチャットを開始
+        function startNewChat() {
+            if (confirm('新しいチャットを開始しますか？現在の会話履歴は保存されます。')) {
+                // 新しいセッションIDを生成
+                currentSessionId = generateSessionId();
+                localStorage.setItem('productManagementSessionId', currentSessionId);
+                document.getElementById('sessionId').textContent = currentSessionId;
+
+                // チャットメッセージをクリア
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <h4>👋 ようこそ！</h4>
+                        <p>下の入力欄にコマンドを入力して会話を始めてください。<br>
+                        システムが自動的に適切な操作画面を生成します。</p>
+                    </div>
+                `;
+
+                // 入力欄をクリア
+                document.getElementById('commandInput').value = '';
+
+                // 履歴を再読み込み
+                loadConversationHistory();
+
+                showNotification('新しいチャットを開始しました', 'success');
+            }
+        }
+
+        // 履歴サイドバーを開く
+        function openHistorySidebar() {
+            document.getElementById('historySidebar').classList.add('open');
+            document.getElementById('historyOverlay').classList.add('open');
+            loadConversationHistory();
+        }
+
+        // 履歴サイドバーを閉じる
+        function closeHistorySidebar() {
+            document.getElementById('historySidebar').classList.remove('open');
+            document.getElementById('historyOverlay').classList.remove('open');
+        }
+
+        // 会話履歴を読み込み
+        async function loadConversationHistory() {
+            try {
+                const response = await fetch(`/api/chat/history/users/all`);
+                const data = await response.json();
+
+                const historyContent = document.getElementById('historyContent');
+
+                if (data.user_sessions && data.user_sessions.length > 0) {
+                    let html = '';
+
+                    // 各ユーザーのセッションを表示
+                    data.user_sessions.forEach(userGroup => {
+                        html += `<div class="user-sessions">`;
+                        html += `<div class="user-header">👤 ${userGroup.user_id}</div>`;
+
+                        userGroup.sessions.forEach(session => {
+                            const isCurrentSession = session.session_id === currentSessionId;
+                            const sessionClass = isCurrentSession ? 'session-item current' : 'session-item';
+
+                            html += `
+                                <div class="${sessionClass}" onclick="loadSession('${session.session_id}')">
+                                    <div class="session-id">ID: ${session.session_id}</div>
+                                    <div class="session-time">${new Date(session.last_activity).toLocaleString('ja-JP')}</div>
+                                    <div class="session-preview">${session.first_message || 'メッセージなし'}</div>
+                                </div>
+                            `;
+                        });
+
+                        html += `</div>`;
+                    });
+
+                    historyContent.innerHTML = html;
+                } else {
+                    historyContent.innerHTML = '<div class="no-history">まだ会話履歴がありません</div>';
+                }
+            } catch (error) {
+                console.error('履歴の読み込みに失敗しました:', error);
+                document.getElementById('historyContent').innerHTML = '<div class="no-history">履歴の読み込みに失敗しました</div>';
+            }
+        }
+
+        // セッションを読み込み（サイドバーから選択時）
+        async function loadSession(sessionId) {
+            try {
+                const response = await fetch(`/api/chat/history/${sessionId}`);
+                const data = await response.json();
+
+                if (data.conversations && data.conversations.length > 0) {
+                    // 現在のセッションIDを更新
+                    currentSessionId = sessionId;
+                    localStorage.setItem('productManagementSessionId', currentSessionId);
+                    document.getElementById('sessionId').textContent = currentSessionId;
+
+                    // チャットメッセージを復元
+                    const chatMessages = document.getElementById('chatMessages');
+                    chatMessages.innerHTML = '';
+
+                    data.conversations.forEach(conv => {
+                        // ユーザーメッセージを追加
+                        if (conv.user_message) {
+                            addMessage('user', conv.user_message, false, null, conv.created_at, conv.id);
+                        }
+                        // エージェントレスポンスを追加
+                        if (conv.agent_response) {
+                            addMessage('assistant', conv.agent_response, false, conv.trace_id, conv.created_at, conv.id);
+                        }
+                    });
+
+                    // 履歴サイドバーを閉じる
+                    closeHistorySidebar();
+
+                    // 履歴を再読み込みして現在のセッションをハイライト
+                    loadConversationHistory();
+
+                    showNotification('会話履歴を読み込みました', 'success');
+                } else {
+                    showNotification('この会話には履歴がありません', 'info');
+                }
+            } catch (error) {
+                console.error('セッションの読み込みに失敗しました:', error);
+                showNotification('セッションの読み込みに失敗しました', 'error');
+            }
+        }
+
+        // セッション履歴を読み込み（ページ読み込み時用、通知なし）
+        async function loadSessionHistory(sessionId) {
+            try {
+                const response = await fetch(`/api/chat/history/${sessionId}`);
+                const data = await response.json();
+
+                if (data.conversations && data.conversations.length > 0) {
+                    // チャットメッセージを復元
+                    const chatMessages = document.getElementById('chatMessages');
+                    chatMessages.innerHTML = '';
+
+                    data.conversations.forEach(conv => {
+                        // ユーザーメッセージを追加
+                        if (conv.user_message) {
+                            addMessage('user', conv.user_message, false, null, conv.created_at, conv.id);
+                        }
+                        // エージェントレスポンスを追加
+                        if (conv.agent_response) {
+                            addMessage('assistant', conv.agent_response, false, conv.trace_id, conv.created_at, conv.id);
+                        }
+                    });
+
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error('セッション履歴の読み込みに失敗しました:', error);
+                return false;
+            }
+        }
+
+        // 通知を表示
+        function showNotification(message, type = 'info') {
+            // 既存の通知を削除
+            const existingNotification = document.querySelector('.notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+
+            document.body.appendChild(notification);
+
+            // アニメーション表示
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+
+            // 3秒後に自動削除
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // LLMステータス更新
+        function updateLLMStatus() {
+            const select = document.getElementById('llmSelect');
+            const indicator = document.getElementById('llmIndicator');
+            const status = document.getElementById('llmStatus');
+
+            const selectedOption = select.options[select.selectedIndex];
+            const provider = selectedOption.dataset.provider;
+            const model = selectedOption.dataset.model;
+            const color = selectedOption.dataset.color;
+            const description = selectedOption.dataset.description;
+
+            // インジケーターの色を更新
+            indicator.className = 'llm-indicator';
+            if (color === 'green') {
+                indicator.classList.add('available');
+            } else if (color === 'red') {
+                indicator.classList.add('unavailable');
+            } else {
+                indicator.classList.add('loading');
+            }
+
+            // ステータステキストを更新
+            status.textContent = `${provider} - ${model}`;
+            if (description) {
+                status.title = description;
+            }
+        }
+
+        // メッセージ送信
+        async function sendMessage() {
+            const input = document.getElementById('commandInput');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            // 送信ボタンを無効化
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+
+            // ユーザーメッセージを一時的に表示（conversation IDは後で更新）
+            const userMessageId = addMessage('user', message, false, null, new Date().toISOString());
+            input.value = '';
+            autoResize(input);
+
+            // ローディング表示
+            const loadingId = addMessage('assistant', '', true);
+
+            try {
+                // エージェントモードとLLMタイプを取得
+                const agentMode = document.getElementById('agentModeSelect').value;
+                const llmModel = document.getElementById('llmSelect').value;
+
+                // エージェントモードに応じて適切なAPIエンドポイントを選択
+                let apiUrl;
+                let requestBody;
+
+                if (agentMode === 'single') {
+                    // 単一エージェントAPI
+                    apiUrl = '/api/agent/single-agent/chat';
+                    requestBody = {
+                        message: message,
+                        user_id: currentUserId,
+                        session_id: currentSessionId,
+                        llm_type: llmModel,
+                        context: {}
+                    };
+                } else {
+                    // マルチエージェントAPI
+                    apiUrl = '/api/agent/multi-agent/chat';
+                    requestBody = {
+                        message: message,
+                        user_id: currentUserId,
+                        session_id: currentSessionId,
+                        llm_type: llmModel,
+                        context: {},
+                        agent_type: null, // 自動ルーティング
+                        enable_collaboration: true
+                    };
+                }
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // conversation IDが取得できた場合、ユーザーメッセージにも設定
+                if (data.conversation_id) {
+                    const userMessageElement = document.getElementById(userMessageId);
+                    if (userMessageElement) {
+                        userMessageElement.setAttribute('data-conversation-id', data.conversation_id);
+                    }
+                }
+
+                // ローディングを削除
+                removeMessage(loadingId);
+
+                // レスポンスを表示（conversation IDを含む）
+                addMessage('assistant', data.response || 'エラーが発生しました', false, data.trace_id, new Date().toISOString(), data.conversation_id);
+
+            } catch (error) {
+                console.error('Error:', error);
+                // ローディングを削除
+                removeMessage(loadingId);
+                // エラーメッセージを表示
+                addMessage('assistant', 'エラーが発生しました。もう一度お試しください。', false, null, new Date().toISOString());
+            } finally {
+                // 送信ボタンを有効化
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        // メッセージを追加
+        function addMessage(role, content, isLoading = false, traceId = null, timestamp = null, conversationId = null) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+            // ウェルカムメッセージを削除
+            const welcomeMessage = chatMessages.querySelector('.welcome-message');
+            if (welcomeMessage) {
+                welcomeMessage.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.id = messageId;
+
+            // conversation IDをデータ属性として保存
+            if (conversationId) {
+                messageDiv.setAttribute('data-conversation-id', conversationId);
+            }
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            if (isLoading) {
+                contentDiv.innerHTML = '<div class="loading">回答を生成中...</div>';
+            } else {
+                // タイムスタンプを追加
+                let contentHTML = '';
+                if (timestamp) {
+                    contentHTML += `<div class="message-timestamp">${new Date(timestamp).toLocaleString('ja-JP')}</div>`;
+                }
+
+                // マークダウン風の簡単な変換
+                let formattedContent = content
+                    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(/\n/g, '<br>');
+
+                contentHTML += `<div class="message-text">${formattedContent}</div>`;
+                contentDiv.innerHTML = contentHTML;
+
+                // アシスタントメッセージにアクションボタンを追加
+                if (role === 'assistant' && !isLoading) {
+                    const actionsDiv = document.createElement('div');
+                    actionsDiv.className = 'message-actions';
+
+                    // コピーボタン
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'action-btn copy';
+                    copyBtn.innerHTML = '📋 コピー';
+                    copyBtn.onclick = () => copyMessage(content);
+
+                    // 再生成ボタン
+                    const regenerateBtn = document.createElement('button');
+                    regenerateBtn.className = 'action-btn regenerate';
+                    regenerateBtn.innerHTML = '🔄 再生成';
+                    regenerateBtn.onclick = () => regenerateMessage(messageId, conversationId);
+
+                    // 良いボタン
+                    const goodBtn = document.createElement('button');
+                    goodBtn.className = 'action-btn good';
+                    goodBtn.innerHTML = '👍 良い';
+                    goodBtn.onclick = () => evaluateMessage(traceId, 'good', messageId);
+
+                    // 悪いボタン
+                    const badBtn = document.createElement('button');
+                    badBtn.className = 'action-btn bad';
+                    badBtn.innerHTML = '👎 悪い';
+                    badBtn.onclick = () => evaluateMessage(traceId, 'bad', messageId);
+
+                    actionsDiv.appendChild(copyBtn);
+                    actionsDiv.appendChild(regenerateBtn);
+                    actionsDiv.appendChild(goodBtn);
+                    actionsDiv.appendChild(badBtn);
+
+                    contentDiv.appendChild(actionsDiv);
+                }
+            }
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(contentDiv);
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            return messageId;
+        }
+
+        // メッセージを削除
+        function removeMessage(messageId) {
+            const messageElement = document.getElementById(messageId);
+            if (messageElement) {
+                messageElement.remove();
+            }
+        }
+
+        // メッセージをコピー
+        async function copyMessage(content) {
+            try {
+                // HTMLタグを除去してプレーンテキストに変換
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = content;
+                const plainText = tempDiv.textContent || tempDiv.innerText || '';
+
+                await navigator.clipboard.writeText(plainText);
+                showNotification('メッセージをコピーしました', 'success');
+            } catch (error) {
+                console.error('コピーに失敗しました:', error);
+                showNotification('コピーに失敗しました', 'error');
+            }
+        }
+
+        // メッセージを再生成
+        async function regenerateMessage(messageId, conversationId) {
+            try {
+                if (!conversationId) {
+                    showNotification('再生成するメッセージのconversation IDが見つかりません', 'error');
+                    return;
+                }
+
+                // 現在のメッセージ要素を取得して位置を記録
+                const currentMessageElement = document.getElementById(messageId);
+                if (!currentMessageElement) {
+                    showNotification('再生成するメッセージが見つかりません', 'error');
+                    return;
+                }
+
+                // 対応するユーザーメッセージを見つける（conversation IDを使用）
+                const chatMessages = document.getElementById('chatMessages');
+                const messages = chatMessages.querySelectorAll('.message');
+                let targetUserMessage = '';
+                let userMessageElement = null;
+
+                // conversation IDに対応するユーザーメッセージを探す
+                for (let i = 0; i < messages.length; i++) {
+                    const messageElement = messages[i];
+                    const msgConversationId = messageElement.getAttribute('data-conversation-id');
+
+                    if (msgConversationId == conversationId && messageElement.classList.contains('user')) {
+                        const contentDiv = messageElement.querySelector('.message-content .message-text');
+                        targetUserMessage = contentDiv ? (contentDiv.textContent || contentDiv.innerText || '') : '';
+                        userMessageElement = messageElement;
+                        break;
+                    }
+                }
+
+                if (!targetUserMessage) {
+                    showNotification('対応するユーザーメッセージが見つかりません', 'error');
+                    return;
+                }
+
+                // 現在のアシスタントメッセージの位置を記録
+                const nextSibling = currentMessageElement.nextSibling;
+                const parentElement = currentMessageElement.parentElement;
+
+                // 現在のメッセージを削除
+                removeMessage(messageId);
+
+                // ローディング表示を同じ位置に挿入
+                const loadingMessageDiv = document.createElement('div');
+                loadingMessageDiv.className = 'message assistant';
+                loadingMessageDiv.id = 'loading_' + Date.now();
+
+                const loadingAvatar = document.createElement('div');
+                loadingAvatar.className = 'message-avatar';
+                loadingAvatar.textContent = '🤖';
+
+                const loadingContentDiv = document.createElement('div');
+                loadingContentDiv.className = 'message-content';
+                loadingContentDiv.innerHTML = '<div class="loading">回答を再生成中...</div>';
+
+                loadingMessageDiv.appendChild(loadingAvatar);
+                loadingMessageDiv.appendChild(loadingContentDiv);
+
+                // 元の位置に挿入
+                if (nextSibling) {
+                    parentElement.insertBefore(loadingMessageDiv, nextSibling);
+                } else {
+                    parentElement.appendChild(loadingMessageDiv);
+                }
+
+                // エージェントモードとLLMモデルを取得
+                const agentMode = document.getElementById('agentModeSelect').value;
+                const llmModel = document.getElementById('llmSelect').value;
+
+                const response = await fetch('/api/chat/regenerate_response', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        query: targetUserMessage,
+                        session_id: currentSessionId,
+                        user_id: currentUserId,
+                        agent_type: agentMode,
+                        llm_type: llmModel,
+                        conversation_id: conversationId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // ローディングを削除
+                loadingMessageDiv.remove();
+
+                // 新しいレスポンスを元の位置に表示
+                const newMessageDiv = document.createElement('div');
+                newMessageDiv.className = 'message assistant';
+                newMessageDiv.id = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+                // conversation IDをデータ属性として保存
+                if (conversationId) {
+                    newMessageDiv.setAttribute('data-conversation-id', conversationId);
+                }
+
+                const newAvatar = document.createElement('div');
+                newAvatar.className = 'message-avatar';
+                newAvatar.textContent = '🤖';
+
+                const newContentDiv = document.createElement('div');
+                newContentDiv.className = 'message-content';
+
+                // タイムスタンプを追加
+                let contentHTML = `<div class="message-timestamp">${new Date().toLocaleString('ja-JP')}</div>`;
+
+                // マークダウン風の簡単な変換
+                let formattedContent = (data.response || '再生成に失敗しました')
+                    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(/\n/g, '<br>');
+
+                contentHTML += `<div class="message-text">${formattedContent}</div>`;
+                newContentDiv.innerHTML = contentHTML;
+
+                // アクションボタンを追加
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+
+                // コピーボタン
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'action-btn copy';
+                copyBtn.innerHTML = '📋 コピー';
+                copyBtn.onclick = () => copyMessage(data.response || '再生成に失敗しました');
+
+                // 再生成ボタン
+                const regenerateBtn = document.createElement('button');
+                regenerateBtn.className = 'action-btn regenerate';
+                regenerateBtn.innerHTML = '🔄 再生成';
+                regenerateBtn.onclick = () => regenerateMessage(newMessageDiv.id, conversationId);
+
+                // 良いボタン
+                const goodBtn = document.createElement('button');
+                goodBtn.className = 'action-btn good';
+                goodBtn.innerHTML = '👍 良い';
+                goodBtn.onclick = () => evaluateMessage(data.trace_id, 'good', newMessageDiv.id);
+
+                // 悪いボタン
+                const badBtn = document.createElement('button');
+                badBtn.className = 'action-btn bad';
+                badBtn.innerHTML = '👎 悪い';
+                badBtn.onclick = () => evaluateMessage(data.trace_id, 'bad', newMessageDiv.id);
+
+                actionsDiv.appendChild(copyBtn);
+                actionsDiv.appendChild(regenerateBtn);
+                actionsDiv.appendChild(goodBtn);
+                actionsDiv.appendChild(badBtn);
+
+                newContentDiv.appendChild(actionsDiv);
+                newMessageDiv.appendChild(newAvatar);
+                newMessageDiv.appendChild(newContentDiv);
+
+                // 元の位置に挿入
+                if (nextSibling) {
+                    parentElement.insertBefore(newMessageDiv, nextSibling);
+                } else {
+                    parentElement.appendChild(newMessageDiv);
+                }
+
+                showNotification('メッセージを再生成しました', 'success');
+
+            } catch (error) {
+                console.error('再生成に失敗しました:', error);
+                showNotification('再生成に失敗しました', 'error');
+            }
+        }
+
+        // メッセージを評価
+        async function evaluateMessage(traceId, evaluation, messageId) {
+            if (!traceId) {
+                showNotification('評価できません（トレースIDが見つかりません）', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/chat/evaluate_response', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        trace_id: traceId,
+                        evaluation: evaluation,
+                        user_id: currentUserId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // ボタンの状態を更新
+                const messageElement = document.getElementById(messageId);
+                if (messageElement) {
+                    const actionBtns = messageElement.querySelectorAll('.action-btn.good, .action-btn.bad');
+                    actionBtns.forEach(btn => {
+                        btn.style.opacity = '0.5';
+                        btn.disabled = true;
+                    });
+
+                    // 選択されたボタンをハイライト
+                    const selectedBtn = messageElement.querySelector(`.action-btn.${evaluation}`);
+                    if (selectedBtn) {
+                        selectedBtn.style.opacity = '1';
+                        selectedBtn.style.fontWeight = 'bold';
+                    }
+                }
+
+                const evaluationText = evaluation === 'good' ? '良い' : '悪い';
+                showNotification(`評価「${evaluationText}」を送信しました`, 'success');
+
+            } catch (error) {
+                console.error('評価の送信に失敗しました:', error);
+                showNotification('評価の送信に失敗しました', 'error');
+            }
+        }
+
+        // テキストエリアの自動リサイズ
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        }
+
+        // 入力処理
+        function handleInput(e) {
+            autoResize(e.target);
+        }
+
+        // キー入力処理
+        function handleKeyDown(e) {
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    // Shift+Enter: 改行（デフォルト動作）
+                    return;
+                } else {
+                    // Enter: 送信（IME入力中でない場合かつ送信ボタンが有効な場合のみ）
+                    if (!isComposing) {
+                        e.preventDefault();
+                        // 送信ボタンが無効化されている場合は送信しない
+                        const sendBtn = document.getElementById('sendBtn');
+                        if (!sendBtn.disabled) {
+                            sendMessage();
+                        }
+                    }
+                }
+            }
+        }
+
+        // IME入力開始
+        function handleCompositionStart(e) {
+            isComposing = true;
+        }
+
+        // IME入力更新
+        function handleCompositionUpdate(e) {
+            isComposing = true;
+        }
+
+        // IME入力終了
+        function handleCompositionEnd(e) {
+            isComposing = false;
+        }
+
+        // イベントリスナー
+        document.getElementById('llmSelect').addEventListener('change', updateLLMStatus);
+
+        // テキストエリアのイベントリスナー設定
+        const commandInput = document.getElementById('commandInput');
+
+        // 基本イベントリスナー
+        // 入力状態を検出するための追加inputイベントリスナー
+        commandInput.addEventListener('input', handleInput);
+        commandInput.addEventListener('keypress', handleKeyDown);
+
+        // IMEイベントリスナー（Mac最適化）
+        commandInput.addEventListener('compositionstart', handleCompositionStart);
+        commandInput.addEventListener('compositionupdate', handleCompositionUpdate);
+        commandInput.addEventListener('compositionend', handleCompositionEnd);
+
+        // フォーカスイベント
+        // フォーカス時にプレースホルダーを更新
+        commandInput.addEventListener('focus', function() {
+            this.placeholder = 'メッセージを入力してください...';
+        });
+
+        commandInput.addEventListener('blur', function() {
+            this.placeholder = 'メッセージを入力してください...';
+        });
+
+        // ESCキーでサイドバーを閉じる
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeHistorySidebar();
+            }
+        });
+
+        // 初期化
+        updateLLMStatus();
+
+        // ページ読み込み時に会話履歴を読み込み
+        window.addEventListener('load', async function() {
+            loadConversationHistory();
+
+            // 既存のセッションIDがある場合、そのセッションの会話履歴を自動的に読み込み
+            if (currentSessionId && currentSessionId !== '') {
+                try {
+                    // セッションに会話履歴があるかチェック
+                    const response = await fetch(`/api/chat/history/${currentSessionId}`);
+                    const data = await response.json();
+
+                    if (data.conversations && data.conversations.length > 0) {
+                        // 会話履歴が存在する場合、自動的に読み込み
+                        await loadSessionHistory(currentSessionId);
+                        console.log('ページ読み込み時に既存セッションの会話履歴を復元しました:', currentSessionId);
+                    }
+                } catch (error) {
+                    console.log('既存セッションの会話履歴読み込みをスキップしました:', error);
+                }
+            }
+
+            commandInput.focus(); // 入力欄にフォーカス
+        });
+
+        // ウィンドウリサイズ時の処理
+        window.addEventListener('resize', function() {
+            autoResize(commandInput);
+        });
+    </script>
+</body>
+</html>

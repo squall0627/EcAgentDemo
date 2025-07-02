@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_
+from sqlalchemy import asc, desc, and_
 from datetime import datetime, timedelta
 from db.models.conversation_history import ConversationHistory
 
@@ -62,7 +62,7 @@ class ConversationService:
         """セッション履歴を取得"""
         return db.query(ConversationHistory)\
             .filter(ConversationHistory.session_id == session_id)\
-            .order_by(desc(ConversationHistory.created_at))\
+            .order_by(asc(ConversationHistory.created_at))\
             .limit(limit)\
             .all()
 

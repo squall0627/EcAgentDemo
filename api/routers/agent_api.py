@@ -226,6 +226,7 @@ async def agent_director_chat(request: ChatRequest):
             request.message,
             session_id=request.session_id,
             user_id=request.user_id,
+            is_entry_agent=True
         )
 
         # レスポンス解析と構築

@@ -4,15 +4,15 @@ from pydantic import BaseModel, Field
 
 from langchain.tools import BaseTool
 
-from ai_agents.base_agent import BaseAgentState
 from ai_agents.product_center.product_management_agent import ProductManagementAgent
 
 class AgentToolInput(BaseModel):
     """Agent Tool用の入力スキーマ"""
     command: str = Field(description="実行するコマンド")
-    # llm_type: Optional[str] = Field(default=None, description="使用するLLMのタイプ")
-    # session_id: Optional[str] = Field(default=None, description="セッションID")
-    # user_id: Optional[str] = Field(default=None, description="ユーザーID")
+    llm_type: Optional[str] = Field(default=None, description="使用するLLMのタイプ")
+    session_id: Optional[str] = Field(default=None, description="セッションID")
+    user_id: Optional[str] = Field(default=None, description="ユーザーID")
+    is_entry_agent: Optional[bool] = Field(default=False, description="エージェントとしてのエントリーかどうか")
 
 
 class ProductManagementAgentTool(BaseTool):
@@ -38,15 +38,16 @@ class ProductManagementAgentTool(BaseTool):
             use_langfuse=use_langfuse
         ))
 
-    def _run(self, command: str) -> str:
+    def _run(self, command: str, llm_type: Optional[str] = None, session_id: Optional[str] = None, user_id: Optional[str] = None, is_entry_agent: Optional[bool] = False) -> str:
         """ProductManagementAgentの処理を実行"""
         try:
             # ProductManagementAgentに処理を委譲
             result = self._product_agent.process_command(
                 command=command,
-                # llm_type=llm_type,
-                # session_id=self._state.session_id,
-                # user_id=self._state.user_id
+                llm_type=llm_type,
+                session_id=session_id,
+                user_id=user_id,
+                is_entry_agent=is_entry_agent
             )
             return result
         except Exception as e:

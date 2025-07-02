@@ -37,6 +37,7 @@ class BaseAgentState(TypedDict):
     conversation_context: Optional[List[Dict[str, Any]]]  # 会話履歴コンテキスト
     trace_id: Optional[str]  # Langfuse trace ID（評価用）
     conversation_id: Optional[int]  # 会話履歴ID（保存用）
+    is_entry_agent: Optional[bool]  # エントリーエージェントかどうか（初期状態設定用）
 
 class BaseAgent(ABC):
     """
@@ -186,6 +187,52 @@ class BaseAgent(ABC):
 
         return state
 
+    def _custom_tool_node(self, state: BaseAgentState):
+        """
+        カスタムツールノード - session_idとuser_idを状態から取得してツールに渡す
+        """
+        from langchain_core.messages import ToolMessage
+
+        outputs = []
+        for tool_call in state["messages"][-1].tool_calls:
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+
+            # 状態からsession_idとuser_idを取得してツール引数に追加
+            if state.get("session_id"):
+                tool_args["session_id"] = state["session_id"]
+            if state.get("user_id"):
+                tool_args["user_id"] = state["user_id"]
+            if state.get("is_entry_agent"):
+                tool_args["is_entry_agent"] = False
+
+            # ツールを実行
+            if tool_name in self.tool_map:
+                try:
+                    result = self.tool_map[tool_name].invoke(tool_args)
+                    outputs.append(
+                        ToolMessage(
+                            content=str(result),
+                            tool_call_id=tool_call["id"]
+                        )
+                    )
+                except Exception as e:
+                    outputs.append(
+                        ToolMessage(
+                            content=f"ツール実行エラー: {str(e)}",
+                            tool_call_id=tool_call["id"]
+                        )
+                    )
+            else:
+                outputs.append(
+                    ToolMessage(
+                        content=f"不明なツール: {tool_name}",
+                        tool_call_id=tool_call["id"]
+                    )
+                )
+
+        return {"messages": outputs}
+
     def _format_context_for_system_message(self, context: List[Dict[str, Any]]) -> str:
         """会話コンテキストをシステムメッセージ用にフォーマット"""
         if not context:
@@ -256,7 +303,7 @@ class BaseAgent(ABC):
 
         # 基本ノードを追加
         builder.add_node("assistant", self._assistant_node)
-        builder.add_node("tools", self.tool_node)
+        builder.add_node("tools", self._custom_tool_node)
 
         # 基本エッジを定義
         builder.add_edge(START, "assistant")
@@ -268,7 +315,7 @@ class BaseAgent(ABC):
 
         return builder.compile()
 
-    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None) -> BaseAgentState:
+    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> BaseAgentState:
         """
         初期状態を作成 - 子クラスでオーバーライド可能
 
@@ -276,6 +323,7 @@ class BaseAgent(ABC):
             command: ユーザーコマンド
             session_id: セッションID
             user_id: ユーザーID
+            is_entry_agent: エントリーエージェントかどうか（初期状態設定用）
 
         Returns:
             BaseAgentState: 初期状態
@@ -292,7 +340,8 @@ class BaseAgent(ABC):
             agent_type=self.agent_name,
             agent_manager_id=self.agent_manager_id,
             conversation_context=None,
-            trace_id=None
+            trace_id=None,
+            is_entry_agent=is_entry_agent,
         )
 
     def _process_final_state(self, final_state: BaseAgentState) -> Dict[str, Any]:
@@ -308,7 +357,9 @@ class BaseAgent(ABC):
         response_message = final_state["messages"][-1].content if final_state["messages"] else "処理が完了しました"
 
         # 会話履歴を保存（conversation_idが状態に設定される）
-        self._save_conversation(final_state, response_message)
+        if final_state.get("is_entry_agent"):
+            # エントリーエージェントの場合は、会話履歴を保存
+            self._save_conversation(final_state, response_message)
 
         response_data = {
             "message": response_message,
@@ -358,7 +409,7 @@ class BaseAgent(ABC):
             "llm_info": self.get_llm_info()
         }
 
-    def process_command(self, command: str, llm_type: str = None, session_id: str = None, user_id: str = None) -> str:
+    def process_command(self, command: str, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> str:
         """
         ユーザーコマンドを処理 - 統一インターフェース
 
@@ -367,6 +418,7 @@ class BaseAgent(ABC):
             llm_type: LLMタイプ（省略時は現在のLLMを使用）
             session_id: セッションID
             user_id: ユーザーID
+            is_entry_agent: エントリーエージェントかどうか（初期状態の設定に影響）
 
         Returns:
             str: JSON形式のレスポンス
@@ -384,7 +436,7 @@ class BaseAgent(ABC):
                     self.switch_llm(llm_type)
 
                 # 初期状態を作成
-                initial_state = self._create_initial_state(command, session_id, user_id)
+                initial_state = self._create_initial_state(command, session_id, user_id, is_entry_agent)
 
                 # ワークフローを実行（CallbackHandlerを使用）
                 config = self.langfuse_handler.get_config(workflow_name, session_id, user_id)

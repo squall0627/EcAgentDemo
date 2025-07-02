@@ -1,6 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from typing import TypedDict, Annotated, List, Dict, Any, Optional, Type
+from typing_extensions import deprecated
 
 from dotenv import load_dotenv
 from langgraph.constants import START
@@ -419,6 +420,9 @@ class BaseAgent(ABC):
 
         return _execute_workflow()
 
+@deprecated(
+    "IntelligentMultiAgentOrchestrator is deprecated. Use BaseAgent directly for multi-agent systems.",
+)
 class IntelligentMultiAgentOrchestrator:
     """
     インテリジェントマルチエージェント統合管理クラス

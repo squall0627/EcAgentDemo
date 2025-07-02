@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from ai_agents.product_management_agent import ProductManagementAgent, EXAMPLE_COMMANDS
+from ai_agents.product_center.product_management_agent import ProductManagementAgent, EXAMPLE_COMMANDS
 from ai_agents.product_center_multi_agent_manager import ProductCenterMultiAgentManager
 from typing import Optional, List, Dict, Any
 import os
@@ -13,6 +13,7 @@ router = APIRouter()
 # グローバルインスタンス管理
 single_agent_instance = None
 multi_agent_manager_instance = None
+agent_director_instance = None
 
 def get_single_agent(llm_type: str = None):
     """単一エージェントインスタンスを取得または作成"""
@@ -66,6 +67,32 @@ def get_multi_agent_manager(llm_type: str = None):
         print(f"🔄 マルチエージェントマネージャーを{llm_type}で初期化しました")
 
     return multi_agent_manager_instance
+
+def get_agent_director(llm_type: str = None):
+    """エージェントディレクターインスタンスを取得または作成"""
+    global agent_director_instance
+
+    # デフォルトモデルを設定
+    if not llm_type:
+        llm_type = llm_config.get_default_model()
+
+    # モデル利用可能性をチェック
+    is_available, message = llm_config.validate_model_availability(llm_type)
+    if not is_available:
+        print(f"⚠️ {message}")
+        # フォールバックモデルを使用
+        llm_type = llm_config.get_default_model()
+
+    # ディレクターが存在しない場合は作成
+    if agent_director_instance is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+
+        # 新しいディレクターインスタンスを作成
+        from ai_agents.agent_director import AgentDirector
+        agent_director_instance = AgentDirector(api_key=api_key, llm_type=llm_type)
+        print(f"🔄 エージェントディレクターを{llm_type}で初期化しました")
+
+    return agent_director_instance
 
 # === Request/Response Models ===
 class ChatRequest(BaseModel):
@@ -187,6 +214,26 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"マルチエージェント処理に失敗しました: {str(e)}")
 
+@router.post("/director-agent/chat", response_model=ChatResponse)
+async def agent_director_chat(request: ChatRequest):
+    """エージェントディレクターを使用したマルチエージェントとの対話"""
+    try:
+        # エージェントディレクターを取得
+        director = get_agent_director(request.llm_type)
+
+        # コマンドを処理
+        response = director.process_command(
+            request.message,
+            session_id=request.session_id,
+            user_id=request.user_id,
+        )
+
+        # レスポンス解析と構築
+        return _parse_agent_response(response, request)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"エージェントディレクター処理に失敗しました: {str(e)}")
+
 @router.post("/multi-agent/routing/analyze", response_model=RoutingAnalysisResponse)
 async def analyze_routing(request: RoutingAnalysisRequest):
     """コマンドのルーティング分析（実際の処理は行わない）"""
@@ -307,7 +354,8 @@ async def switch_agent_llm(agent_type: str, new_llm_type: str):
     """指定エージェントのLLMを切り替え"""
     try:
         if agent_type == "single":
-            agent = get_single_agent()
+            # agent = get_single_agent()
+            agent = get_agent_director()
             agent.switch_llm(new_llm_type)
             return {"message": f"単一エージェントのLLMを{new_llm_type}に切り替えました"}
         elif agent_type in ["multi", "routing"]:

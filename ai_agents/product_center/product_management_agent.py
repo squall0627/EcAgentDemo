@@ -4,7 +4,7 @@ from langchain.schema import HumanMessage
 
 from ai_agents.base_agent import BaseAgent, BaseAgentState
 from ai_agents.intelligent_agent_router import AgentCapability
-from ai_agents.tools.product_tools import (
+from ai_agents.product_center.tools.product_tools import (
     UpdateStockTool,
     UpdatePriceTool,
     UpdateDescriptionTool,

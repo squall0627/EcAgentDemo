@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 import statistics
 from datetime import datetime
+from typing_extensions import deprecated
 
 from langchain.schema import HumanMessage
 from pydantic import BaseModel, Field
@@ -49,6 +50,9 @@ class RoutingDecision(BaseModel):
     requires_collaboration: bool = Field(description="複数エージェント連携が必要か", default=False)
     collaboration_sequence: List[str] = Field(description="連携シーケンス", default_factory=list)
 
+@deprecated(
+    "IntelligentAgentRouterは非推奨です。代わりに、AgentDirectorを使用してください。",
+)
 class IntelligentAgentRouter:
     """
     LLMベースのインテリジェントエージェントルーター

@@ -1,0 +1,56 @@
+import json
+from typing import Optional, Type
+from pydantic import BaseModel, Field
+
+from langchain.tools import BaseTool
+
+from ai_agents.base_agent import BaseAgentState
+from ai_agents.product_center.product_management_agent import ProductManagementAgent
+
+class AgentToolInput(BaseModel):
+    """Agent Tool用の入力スキーマ"""
+    command: str = Field(description="実行するコマンド")
+    # llm_type: Optional[str] = Field(default=None, description="使用するLLMのタイプ")
+    # session_id: Optional[str] = Field(default=None, description="セッションID")
+    # user_id: Optional[str] = Field(default=None, description="ユーザーID")
+
+
+class ProductManagementAgentTool(BaseTool):
+    """
+    ProductManagementAgentをTool化したクラス
+    ProductManagerAgentから呼び出される商品管理実行ツール
+    """
+    name: str = "product_management_agent"
+    description: str = "商品管理実行Agent - 具体的な商品管理タスクを実行（検索、在庫更新、価格変更、棚上げ等）"
+    args_schema: Type[BaseModel] = AgentToolInput
+
+    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
+        super().__init__()
+        # Pydantic制約を回避するため、プライベート属性として設定
+        object.__setattr__(self, '_api_key', api_key)
+        object.__setattr__(self, '_llm_type', llm_type)
+        object.__setattr__(self, '_use_langfuse', use_langfuse)
+
+        # ProductManagementAgentインスタンスを作成
+        object.__setattr__(self, '_product_agent', ProductManagementAgent(
+            api_key=api_key,
+            llm_type=llm_type,
+            use_langfuse=use_langfuse
+        ))
+
+    def _run(self, command: str) -> str:
+        """ProductManagementAgentの処理を実行"""
+        try:
+            # ProductManagementAgentに処理を委譲
+            result = self._product_agent.process_command(
+                command=command,
+                # llm_type=llm_type,
+                # session_id=self._state.session_id,
+                # user_id=self._state.user_id
+            )
+            return result
+        except Exception as e:
+            return json.dumps({
+                "error": f"ProductManagementAgent処理エラー: {str(e)}",
+                "agent": "ProductManagementAgent"
+            }, ensure_ascii=False)

@@ -367,29 +367,37 @@
                 let apiUrl;
                 let requestBody;
 
-                if (agentMode === 'single') {
-                    // 単一エージェントAPI
-                    apiUrl = '/api/agent/single-agent/chat';
-                    requestBody = {
-                        message: message,
-                        user_id: currentUserId,
-                        session_id: currentSessionId,
-                        llm_type: llmModel,
-                        context: {}
-                    };
-                } else {
-                    // マルチエージェントAPI
-                    apiUrl = '/api/agent/multi-agent/chat';
-                    requestBody = {
-                        message: message,
-                        user_id: currentUserId,
-                        session_id: currentSessionId,
-                        llm_type: llmModel,
-                        context: {},
-                        agent_type: null, // 自動ルーティング
-                        enable_collaboration: true
-                    };
-                }
+                apiUrl = '/api/agent/director-agent/chat';
+                requestBody = {
+                    message: message,
+                    user_id: currentUserId,
+                    session_id: currentSessionId,
+                    llm_type: llmModel,
+                    context: {}
+                };
+                // if (agentMode === 'single') {
+                //     // 単一エージェントAPI
+                //     apiUrl = '/api/agent/single-agent/chat';
+                //     requestBody = {
+                //         message: message,
+                //         user_id: currentUserId,
+                //         session_id: currentSessionId,
+                //         llm_type: llmModel,
+                //         context: {}
+                //     };
+                // } else {
+                //     // マルチエージェントAPI
+                //     apiUrl = '/api/agent/multi-agent/chat';
+                //     requestBody = {
+                //         message: message,
+                //         user_id: currentUserId,
+                //         session_id: currentSessionId,
+                //         llm_type: llmModel,
+                //         context: {},
+                //         agent_type: null, // 自動ルーティング
+                //         enable_collaboration: true
+                //     };
+                // }
 
                 const response = await fetch(apiUrl, {
                     method: 'POST',

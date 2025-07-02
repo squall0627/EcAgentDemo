@@ -1,10 +1,14 @@
 import json
 from typing import Dict, List, Any
+from typing_extensions import deprecated
 
 from ai_agents.base_agent import IntelligentMultiAgentOrchestrator
-from ai_agents.product_management_agent import ProductManagementAgent
+from ai_agents.product_center.product_management_agent import ProductManagementAgent
 from ai_agents.intelligent_agent_router import RoutingDecision
 
+@deprecated(
+    "ProductCenterMultiAgentManagerは非推奨です。代わりにProductCenterAgentManagerを使用してください。",
+)
 class ProductCenterMultiAgentManager:
     """
     商品センター用インテリジェントマルチエージェント管理クラス

@@ -38,6 +38,10 @@ class BaseAgentState(TypedDict):
     trace_id: Optional[str]  # Langfuse trace ID（評価用）
     conversation_id: Optional[int]  # 会話履歴ID（保存用）
     is_entry_agent: Optional[bool]  # エントリーエージェントかどうか（初期状態設定用）
+    # 重複ツール呼び出し防止用フィールド
+    tool_call_history: Optional[List[Dict[str, Any]]]  # ツール呼び出し履歴
+    task_completed: Optional[bool]  # タスク完了フラグ
+    completion_reason: Optional[str]  # 完了理由
 
 class BaseAgent(ABC):
     """
@@ -160,15 +164,15 @@ class BaseAgent(ABC):
         基本アシスタントノード - システムメッセージとLLM呼び出しを処理
         子クラスでオーバーライド可能
         """
+        # エージェント固有のシステムメッセージを取得
+        sys_msg_content = self._get_system_message_content()
+
         # 会話履歴コンテキストを読み込み
         if state.get("session_id") and not state.get("conversation_context"):
             state["conversation_context"] = self._load_conversation_context(
-                state["session_id"], 
+                state["session_id"],
                 state.get("user_id")
             )
-
-        # エージェント固有のシステムメッセージを取得
-        sys_msg_content = self._get_system_message_content()
 
         # 会話履歴コンテキストをシステムメッセージに追加
         if state.get("conversation_context"):
@@ -179,7 +183,7 @@ class BaseAgent(ABC):
         if not state.get("is_entry_agent") and state.get("user_input"):
             current_message = state["messages"][-1].content if state["messages"] else ""
             if state["user_input"] != current_message:
-                sys_msg_content += f"\n\n## ユーザーの原始指令（参考情報）:\n「{state['user_input']}」\n※この原始指令を参考にして、現在のタスクを適切に実行してください。"
+                sys_msg_content += f"\n\n## user_input（参考情報）:\n「{state['user_input']}」\n※情報不足場合、このuser_inputを参考にして、現在のタスクを適切に実行してください。"
 
         sys_msg = SystemMessage(content=sys_msg_content)
 
@@ -196,10 +200,18 @@ class BaseAgent(ABC):
     def _custom_tool_node(self, state: BaseAgentState):
         """
         カスタムツールノード - session_idとuser_idを状態から取得してツールに渡す
+        重複ツール呼び出しを防止する機能を追加
         """
         from langchain_core.messages import ToolMessage
+        import time
+        import hashlib
 
         outputs = []
+
+        # ツール呼び出し履歴を初期化（存在しない場合）
+        if state.get("tool_call_history") is None:
+            state["tool_call_history"] = []
+
         for tool_call in state["messages"][-1].tool_calls:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
@@ -213,6 +225,46 @@ class BaseAgent(ABC):
                 tool_args["is_entry_agent"] = False
             if state.get("user_input"):
                 tool_args["user_input"] = state["user_input"]
+
+            # # ツール呼び出しのハッシュを生成（重複検出用）
+            # tool_call_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
+            # tool_call_hash = hashlib.md5(tool_call_signature.encode()).hexdigest()
+            #
+            # # 重複チェック（過去5分以内の同じツール呼び出しをチェック）
+            # current_time = time.time()
+            # recent_calls = [
+            #     call for call in state["tool_call_history"]
+            #     if current_time - call.get("timestamp", 0) < 300  # 5分以内
+            # ]
+            #
+            # # 同じハッシュの呼び出しが最近あるかチェック
+            # duplicate_found = any(
+            #     call.get("hash") == tool_call_hash
+            #     for call in recent_calls
+            # )
+            #
+            # if duplicate_found:
+            #     # 重複ツール呼び出しを検出
+            #     print(f"⚠️ 重複ツール呼び出しを検出: {tool_name}")
+            #     outputs.append(
+            #         ToolMessage(
+            #             content=f"重複ツール呼び出しを検出しました。同じ操作は既に実行済みです。タスクが完了している可能性があります。",
+            #             tool_call_id=tool_call["id"]
+            #         )
+            #     )
+            #     # タスク完了フラグを設定
+            #     state["task_completed"] = True
+            #     state["completion_reason"] = f"重複ツール呼び出し検出: {tool_name}"
+            #     continue
+            #
+            # # ツール呼び出し履歴に記録
+            # tool_call_record = {
+            #     "timestamp": current_time,
+            #     "tool_name": tool_name,
+            #     "tool_args": tool_args.copy(),
+            #     "hash": tool_call_hash
+            # }
+            # state["tool_call_history"].append(tool_call_record)
 
             # ツールを実行
             if tool_name in self.tool_map:
@@ -300,10 +352,23 @@ class BaseAgent(ABC):
             print(f"⚠️ 会話履歴の保存に失敗: {str(e)}")
 
     # [既存のメソッドは変更なし - _build_workflow_graph, _create_initial_state, etc.]
+    def _smart_tools_condition(self, state: BaseAgentState):
+        """
+        スマートツール条件 - タスク完了状態とツール呼び出し必要性を考慮
+        """
+        # タスクが完了している場合は終了
+        if state.get("task_completed"):
+            print(f"✅ タスク完了を検出: {state.get('completion_reason', '不明')}")
+            return "__end__"
+
+        # 標準のツール条件をチェック
+        return tools_condition(state)
+
     def _build_workflow_graph(self) -> CompiledStateGraph:
         """
         基本ワークフローグラフを構築 - 標準的なassistant->tools->assistantフロー
         子クラスでオーバーライドして独自ワークフローを実装可能
+        重複ツール呼び出し防止機能を含む
         """
         # 状態グラフを定義
         state_class = self._get_state_class()
@@ -317,7 +382,7 @@ class BaseAgent(ABC):
         builder.add_edge(START, "assistant")
         builder.add_conditional_edges(
             "assistant",
-            tools_condition,  # ツールが必要な場合はtools、そうでなければ終了
+            self._smart_tools_condition,  # スマートツール条件を使用
         )
         builder.add_edge("tools", "assistant")
 
@@ -339,7 +404,7 @@ class BaseAgent(ABC):
         """
         state_class = self._get_state_class()
         return state_class(
-            messages=[HumanMessage(content=command)],
+            messages=[HumanMessage(content=f"{command}(user_input: {user_input})")],
             user_input=user_input or command,  # user_inputがNoneの場合はcommandを使用
             html_content=None,
             error_message=None,
@@ -351,6 +416,10 @@ class BaseAgent(ABC):
             conversation_context=None,
             trace_id=None,
             is_entry_agent=is_entry_agent,
+            # 重複ツール呼び出し防止用フィールドを初期化
+            tool_call_history=[],
+            task_completed=False,
+            completion_reason=None,
         )
 
     def _process_final_state(self, final_state: BaseAgentState) -> Dict[str, Any]:

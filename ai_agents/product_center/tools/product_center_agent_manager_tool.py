@@ -22,7 +22,7 @@ class ProductCenterAgentManagerTool(BaseTool):
     AgentDirectorから呼び出される商品センター管理専門ツール
     """
     name: str = "product_center_agent_manager"
-    description: str = "商品センター管理専門Manager - 商品検索、在庫管理、価格設定、棚上げ・棚下げ等の商品関連業務を処理"
+    description: str = "商品センター管理専門Manager - 商品詳細情報管理、商品在庫管理、商品価格管理、商品説明管理、商品棚上げ・棚下げ状態管理等の商品関連業務を処理"
     args_schema: Type[BaseModel] = ManagerToolInput
 
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
@@ -37,7 +37,7 @@ class ProductCenterAgentManagerTool(BaseTool):
         object.__setattr__(self, '_product_center_agent_manager', ProductCenterAgentManager(
             api_key=api_key,
             llm_type=llm_type,
-            use_langfuse=use_langfuse
+            use_langfuse=use_langfuse,
         ))
 
     def _run(self, command: str, llm_type: Optional[str] = None, session_id: Optional[str] = None, user_id: Optional[str] = None, is_entry_agent: Optional[bool] = False) -> str:

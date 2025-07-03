@@ -109,6 +109,17 @@ class ProductManagementAgent(BaseAgent):
 3. **段階的サポート**: ユーザーが問題解決まで段階的にサポート（履歴のエラーパターンを活用）
 4. **適切な画面生成**: 毎回応答の最後、***必ず***適切な操作画面(HTML)を自動生成（履歴の状態を反映）
 
+## 入力形式：
+    - ユーザー入力：自由形式の自然言語
+    - 上流Agentから渡されたcommandの入力形式：
+    ```json文字列
+    {
+      "command": {
+        "action": 上流Agentが抽出したsub_command,
+        "user_input": ユーザーのオリジナル入力内容
+      }
+    }
+
 ## 応答形式：
 - JSON形式で構造化された応答
 - HTML生成が必要な場合は "html_content" フィールドに含め、直接に画面にレンダリング
@@ -168,7 +179,7 @@ class ProductManagementAgent(BaseAgent):
         """商品管理エージェント専用状態クラスを使用"""
         return ProductAgentState
     
-    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None) -> ProductAgentState:
+    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None, is_entry_agent: bool = False)  -> ProductAgentState:
         """商品管理エージェント専用の初期状態を作成"""
         return ProductAgentState(
             messages=[HumanMessage(content=command)],
@@ -181,7 +192,12 @@ class ProductManagementAgent(BaseAgent):
             agent_type=self.agent_name,
             product_ids=None,
             operation_type=None,
-            bulk_operation=False
+            bulk_operation=False,
+            agent_manager_id=self.agent_manager_id,
+            conversation_context=None,
+            trace_id=None,
+            conversation_id=None,
+            is_entry_agent=is_entry_agent
         )
 
 # 商品管理コマンド例

@@ -21,7 +21,7 @@ class ProductManagementAgentTool(BaseTool):
     ProductManagerAgentから呼び出される商品管理実行ツール
     """
     name: str = "product_management_agent"
-    description: str = "商品管理実行Agent - 具体的な商品管理タスクを実行（検索、在庫更新、価格変更、棚上げ等）"
+    description: str = "商品管理実行Agent - 具体的な商品管理タスクを実行（商品検索、商品在庫参照・更新、商品価格参照・更新、商品説明参照・更新、棚上げ・棚下げ等）"
     args_schema: Type[BaseModel] = AgentToolInput
 
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):

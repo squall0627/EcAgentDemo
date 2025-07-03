@@ -122,36 +122,50 @@ async def regenerate_response(
 
     try:
         async with httpx.AsyncClient() as client:
-            if agent_type in ["multi", "collaboration"]:
-                # 调用多agent API
-                api_url = f"{AGENT_API_BASE_URL}/api/agent/multi-agent/chat"
-                payload = {
-                    "message": query,
-                    "context": context or "",
-                    "llm_type": llm_type,
-                    "session_id": session_id or "",
-                    "user_id": user_id or "",
-                    "agent_type": None if agent_type == "multi" else agent_type,
-                    "enable_collaboration": agent_type == "collaboration"  # TODO
-                }
+            # if agent_type in ["multi", "collaboration"]:
+            #     # 调用多agent API
+            #     api_url = f"{AGENT_API_BASE_URL}/api/agent/multi-agent/chat"
+            #     payload = {
+            #         "message": query,
+            #         "context": context or "",
+            #         "llm_type": llm_type,
+            #         "session_id": session_id or "",
+            #         "user_id": user_id or "",
+            #         "agent_type": None if agent_type == "multi" else agent_type,
+            #         "enable_collaboration": agent_type == "collaboration"  # TODO
+            #     }
+            #
+            #     # 如果是协作模式，添加协作参数
+            #     if agent_type == "collaboration":
+            #         payload["collaboration"] = True
+            #
+            # else:
+            #     # 调用单agent API
+            #     api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
+            #     payload = {
+            #         "message": query,
+            #         "llm_type": llm_type,
+            #         "session_id": session_id or "",
+            #         "user_id": user_id or ""
+            #     }
+            #
+            #     # 如果有context，添加到payload中
+            #     if context:
+            #         payload["context"] = context
 
-                # 如果是协作模式，添加协作参数
-                if agent_type == "collaboration":
-                    payload["collaboration"] = True
+            api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
+            payload = {
+                "message": query,
+                "llm_type": llm_type,
+                "session_id": session_id or "",
+                "user_id": user_id or "",
+                "is_entry_agent": True,
+            }
 
-            else:
-                # 调用单agent API
-                api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
-                payload = {
-                    "message": query,
-                    "llm_type": llm_type,
-                    "session_id": session_id or "",
-                    "user_id": user_id or ""
-                }
+            # 如果有context，添加到payload中
+            if context:
+                payload["context"] = context
 
-                # 如果有context，添加到payload中
-                if context:
-                    payload["context"] = context
 
             # 发送HTTP请求
             response = await client.post(

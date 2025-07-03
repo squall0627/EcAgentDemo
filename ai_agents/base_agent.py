@@ -175,6 +175,12 @@ class BaseAgent(ABC):
             context_summary = self._format_context_for_system_message(state["conversation_context"])
             sys_msg_content += f"\n\n## 会話履歴コンテキスト:\n{context_summary}"
 
+        # 原始ユーザー指令をシステムメッセージに追加
+        if not state.get("is_entry_agent") and state.get("user_input"):
+            current_message = state["messages"][-1].content if state["messages"] else ""
+            if state["user_input"] != current_message:
+                sys_msg_content += f"\n\n## ユーザーの原始指令（参考情報）:\n「{state['user_input']}」\n※この原始指令を参考にして、現在のタスクを適切に実行してください。"
+
         sys_msg = SystemMessage(content=sys_msg_content)
 
         # エージェント種別を状態に設定
@@ -205,6 +211,8 @@ class BaseAgent(ABC):
                 tool_args["user_id"] = state["user_id"]
             if state.get("is_entry_agent"):
                 tool_args["is_entry_agent"] = False
+            if state.get("user_input"):
+                tool_args["user_input"] = state["user_input"]
 
             # ツールを実行
             if tool_name in self.tool_map:
@@ -315,12 +323,13 @@ class BaseAgent(ABC):
 
         return builder.compile()
 
-    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> BaseAgentState:
+    def _create_initial_state(self, command: str, user_input: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> BaseAgentState:
         """
         初期状態を作成 - 子クラスでオーバーライド可能
 
         Args:
             command: ユーザーコマンド
+            user_input: ユーザーのオリジナル入力内容（省略時はコマンドを使用）
             session_id: セッションID
             user_id: ユーザーID
             is_entry_agent: エントリーエージェントかどうか（初期状態設定用）
@@ -331,7 +340,7 @@ class BaseAgent(ABC):
         state_class = self._get_state_class()
         return state_class(
             messages=[HumanMessage(content=command)],
-            user_input=command,
+            user_input=user_input or command,  # user_inputがNoneの場合はcommandを使用
             html_content=None,
             error_message=None,
             next_actions=None,
@@ -409,12 +418,13 @@ class BaseAgent(ABC):
             "llm_info": self.get_llm_info()
         }
 
-    def process_command(self, command: str, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> str:
+    def process_command(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> str:
         """
         ユーザーコマンドを処理 - 統一インターフェース
 
         Args:
             command: ユーザーコマンド
+            user_input: ユーザーのオリジナル入力内容（省略時はコマンドを使用）
             llm_type: LLMタイプ（省略時は現在のLLMを使用）
             session_id: セッションID
             user_id: ユーザーID
@@ -436,7 +446,7 @@ class BaseAgent(ABC):
                     self.switch_llm(llm_type)
 
                 # 初期状態を作成
-                initial_state = self._create_initial_state(command, session_id, user_id, is_entry_agent)
+                initial_state = self._create_initial_state(command, user_input, session_id, user_id, is_entry_agent)
 
                 # ワークフローを実行（CallbackHandlerを使用）
                 config = self.langfuse_handler.get_config(workflow_name, session_id, user_id)

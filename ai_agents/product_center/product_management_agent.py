@@ -31,7 +31,7 @@ class ProductManagementAgent(BaseAgent):
     商品管理専門エージェント
     BaseAgentを継承してECバックオフィス商品管理機能を提供
     """
-    
+
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """商品管理エージェント初期化"""
         super().__init__(
@@ -40,7 +40,7 @@ class ProductManagementAgent(BaseAgent):
             use_langfuse=use_langfuse,
             agent_name="ProductManagementAgent"
         )
-    
+
     def _initialize_tools(self) -> List[Any]:
         """商品管理固有のツールを初期化"""
         return [
@@ -56,7 +56,7 @@ class ProductManagementAgent(BaseAgent):
             PublishProductsTool(),
             UnpublishProductsTool()
         ]
-    
+
     def _get_system_message_content(self) -> str:
         """商品管理エージェントのシステムメッセージを取得"""
         return """あなたはECバックオフィス商品管理の専門アシスタントです。管理者の自然言語コマンドを理解し、**会話履歴を十分に活用**しながら以下の機能を提供します：
@@ -132,11 +132,11 @@ class ProductManagementAgent(BaseAgent):
 - 「前回の一括棚上げ処理で残った未完了商品2件について、条件を確認してから処理を進めます」
 
 常に親しみやすく明確な日本語で応答し、**会話履歴を最大限活用**して管理者の業務効率向上を最優先に考えてください。"""
-    
+
     def _get_workflow_name(self) -> str:
         """ワークフロー名を取得"""
         return "product_management_workflow"
-    
+
     def get_agent_capability(self) -> AgentCapability:
         """商品管理エージェントの能力定義を取得"""
         return AgentCapability(
@@ -174,16 +174,16 @@ class ProductManagementAgent(BaseAgent):
                 "在庫分析エージェント: 詳細な在庫分析が必要な時"
             ]
         )
-    
+
     def _get_state_class(self) -> Type[TypedDict]:
         """商品管理エージェント専用状態クラスを使用"""
         return ProductAgentState
-    
-    def _create_initial_state(self, command: str, session_id: str = None, user_id: str = None, is_entry_agent: bool = False)  -> ProductAgentState:
+
+    def _create_initial_state(self, command: str, user_input: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False)  -> ProductAgentState:
         """商品管理エージェント専用の初期状態を作成"""
         return ProductAgentState(
             messages=[HumanMessage(content=command)],
-            user_input=command,
+            user_input=user_input or command, # ユーザー入力がない場合はコマンドを使用
             html_content=None,
             error_message=None,
             next_actions=None,
@@ -235,14 +235,14 @@ if __name__ == "__main__":
     load_dotenv()
 
     api_key = os.getenv("OPENAI_API_KEY")
-    
+
     # 商品管理エージェントの単体使用
     agent = ProductManagementAgent(api_key)
-    
+
     # エージェント能力情報を表示
     capability = agent.get_agent_capability()
     print("エージェント能力:", capability)
-    
+
     # テスト実行
     result = agent.process_command("JAN code 1000000000001の商品を検索し、商品詳細一覧画面を生成してください。")
     print(result)

@@ -224,9 +224,10 @@ async def agent_director_chat(request: ChatRequest):
         # コマンドを処理
         response = director.process_command(
             request.message,
+            llm_type=request.llm_type,
             session_id=request.session_id,
             user_id=request.user_id,
-            is_entry_agent=True
+            is_entry_agent=True,
         )
 
         # レスポンス解析と構築

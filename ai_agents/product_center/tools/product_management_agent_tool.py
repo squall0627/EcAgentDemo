@@ -9,6 +9,7 @@ from ai_agents.product_center.product_management_agent import ProductManagementA
 class AgentToolInput(BaseModel):
     """Agent Tool用の入力スキーマ"""
     command: str = Field(description="実行するコマンド")
+    user_input: str = Field(default=None, description="ユーザーのオリジナル入力内容")
     llm_type: Optional[str] = Field(default=None, description="使用するLLMのタイプ")
     session_id: Optional[str] = Field(default=None, description="セッションID")
     user_id: Optional[str] = Field(default=None, description="ユーザーID")
@@ -38,12 +39,13 @@ class ProductManagementAgentTool(BaseTool):
             use_langfuse=use_langfuse
         ))
 
-    def _run(self, command: str, llm_type: Optional[str] = None, session_id: Optional[str] = None, user_id: Optional[str] = None, is_entry_agent: Optional[bool] = False) -> str:
+    def _run(self, command: str, user_input: Optional[str] = None, llm_type: Optional[str] = None, session_id: Optional[str] = None, user_id: Optional[str] = None, is_entry_agent: Optional[bool] = False) -> str:
         """ProductManagementAgentの処理を実行"""
         try:
             # ProductManagementAgentに処理を委譲
             result = self._product_agent.process_command(
                 command=command,
+                user_input=user_input,
                 llm_type=llm_type,
                 session_id=session_id,
                 user_id=user_id,

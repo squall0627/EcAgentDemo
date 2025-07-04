@@ -1,7 +1,6 @@
 import json
 from abc import ABC, abstractmethod
 from typing import TypedDict, Annotated, List, Dict, Any, Optional, Type
-from typing_extensions import deprecated
 
 from dotenv import load_dotenv
 from langgraph.constants import START
@@ -16,6 +15,7 @@ from llm.llm_handler import LLMHandler
 from utils.langfuse_handler import LangfuseHandler
 from services.conversation_service import ConversationService
 from db.database import get_db
+from utils.string_utils import clean_think_output
 
 load_dotenv()
 
@@ -183,6 +183,15 @@ class BaseAgent(ABC):
 
         # LLMを呼び出してメッセージに追加
         response = self.llm_with_tools.invoke([sys_msg] + state["messages"])
+        response_content = response.content.strip()
+        response_content, thoughts = clean_think_output(response_content)
+        if thoughts:
+            print("\n🤔 LLM Thoughts:")
+            print(thoughts)
+
+        response.content = response_content
+        print(f"\n💬 {self.agent_name} Response:\n{response_content}")
+
         state["messages"].append(response)
 
         return state
@@ -190,9 +199,7 @@ class BaseAgent(ABC):
     def _custom_tool_node(self, state: BaseAgentState):
         """
         カスタムツールノード - session_idとuser_idを状態から取得してツールに渡す
-        重複ツール呼び出しを防止する機能を追加
         """
-        from langchain_core.messages import ToolMessage
 
         for tool_call in state["messages"][-1].tool_calls:
             tool_name = tool_call["name"]

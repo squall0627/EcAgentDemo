@@ -1,8 +1,6 @@
-from typing import List, Any
-
 from ai_agents.base_agent import BaseAgent
 from ai_agents.intelligent_agent_router import AgentCapability
-from ai_agents.product_center.tools.product_management_agent_tool import ProductManagementAgentTool
+from ai_agents.product_center.product_management_agent import ProductManagementAgent
 
 
 class ProductCenterAgentManager(BaseAgent):
@@ -19,6 +17,10 @@ class ProductCenterAgentManager(BaseAgent):
             use_langfuse=use_langfuse,
             agent_name="ProductCenterAgentManager"
         )
+
+    def _initialize_tools(self):
+        """ProductCenterAgentManager用ツールを初期化"""
+        return []
 
     def _get_system_message_content(self) -> str:
         """ProductCenterAgentManager用システムメッセージ"""
@@ -113,3 +115,11 @@ class ProductCenterAgentManager(BaseAgent):
             ],
             collaboration_needs=[]
         )
+
+    def process_command(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> str:
+        # TODO
+        return ProductManagementAgent(
+                api_key=self.api_key,
+                llm_type=llm_type or self.llm_type,
+                use_langfuse=True
+            ).process_command(command, user_input, session_id=session_id, user_id=user_id, is_entry_agent=is_entry_agent)

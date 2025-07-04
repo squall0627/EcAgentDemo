@@ -153,7 +153,7 @@ async def regenerate_response(
             #     if context:
             #         payload["context"] = context
 
-            api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
+            api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
             payload = {
                 "message": query,
                 "llm_type": llm_type,

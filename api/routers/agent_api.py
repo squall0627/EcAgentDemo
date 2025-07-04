@@ -417,6 +417,7 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
             # ユーザー向けメッセージを取得
             response = response_data.get("message", response)
     except (json.JSONDecodeError, KeyError):
+        print(f"⚠️ レスポンス解析エラー: {response}")
         pass
 
     # trace_idが設定されていない場合、現在のtraceから取得を試行

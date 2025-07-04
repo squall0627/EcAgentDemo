@@ -20,16 +20,6 @@ class ProductCenterAgentManager(BaseAgent):
             agent_name="ProductCenterAgentManager"
         )
 
-    def _initialize_tools(self) -> List[Any]:
-        """ProductManagementAgent固有のツール（ProductManagementAgentTool）を初期化"""
-        return [
-            ProductManagementAgentTool(
-                api_key=self.api_key,
-                llm_type=self.llm_type,
-                use_langfuse=self.langfuse_handler.use_langfuse
-            )
-        ]
-
     def _get_system_message_content(self) -> str:
         """ProductCenterAgentManager用システムメッセージ"""
         return """

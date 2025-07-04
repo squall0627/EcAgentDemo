@@ -182,7 +182,7 @@ class ProductManagementAgent(BaseAgent):
     def _create_initial_state(self, command: str, user_input: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False)  -> ProductAgentState:
         """商品管理エージェント専用の初期状態を作成"""
         return ProductAgentState(
-            messages=[HumanMessage(content=f"{command}(user_input: {user_input})")],
+            messages=[HumanMessage(content=command)],
             user_input=user_input or command, # ユーザー入力がない場合はコマンドを使用
             html_content=None,
             error_message=None,
@@ -198,10 +198,6 @@ class ProductManagementAgent(BaseAgent):
             trace_id=None,
             conversation_id=None,
             is_entry_agent=is_entry_agent,
-            # 重複ツール呼び出し防止用フィールドを初期化
-            tool_call_history=[],
-            task_completed=False,
-            completion_reason=None
         )
 
 # 商品管理コマンド例

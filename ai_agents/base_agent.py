@@ -11,9 +11,9 @@ from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from ai_agents.intelligent_agent_router import AgentCapability
 from llm.llm_handler import LLMHandler
 from utils.langfuse_handler import LangfuseHandler
-from ai_agents.intelligent_agent_router import IntelligentAgentRouter, AgentCapability, RoutingDecision
 from services.conversation_service import ConversationService
 from db.database import get_db
 
@@ -38,10 +38,6 @@ class BaseAgentState(TypedDict):
     trace_id: Optional[str]  # Langfuse trace ID（評価用）
     conversation_id: Optional[int]  # 会話履歴ID（保存用）
     is_entry_agent: Optional[bool]  # エントリーエージェントかどうか（初期状態設定用）
-    # 重複ツール呼び出し防止用フィールド
-    tool_call_history: Optional[List[Dict[str, Any]]]  # ツール呼び出し履歴
-    task_completed: Optional[bool]  # タスク完了フラグ
-    completion_reason: Optional[str]  # 完了理由
 
 class BaseAgent(ABC):
     """
@@ -179,12 +175,6 @@ class BaseAgent(ABC):
             context_summary = self._format_context_for_system_message(state["conversation_context"])
             sys_msg_content += f"\n\n## 会話履歴コンテキスト:\n{context_summary}"
 
-        # 原始ユーザー指令をシステムメッセージに追加
-        if not state.get("is_entry_agent") and state.get("user_input"):
-            current_message = state["messages"][-1].content if state["messages"] else ""
-            if state["user_input"] != current_message:
-                sys_msg_content += f"\n\n## user_input（参考情報）:\n「{state['user_input']}」\n※情報不足場合、このuser_inputを参考にして、現在のタスクを適切に実行してください。"
-
         sys_msg = SystemMessage(content=sys_msg_content)
 
         # エージェント種別を状態に設定
@@ -203,14 +193,6 @@ class BaseAgent(ABC):
         重複ツール呼び出しを防止する機能を追加
         """
         from langchain_core.messages import ToolMessage
-        import time
-        import hashlib
-
-        outputs = []
-
-        # ツール呼び出し履歴を初期化（存在しない場合）
-        if state.get("tool_call_history") is None:
-            state["tool_call_history"] = []
 
         for tool_call in state["messages"][-1].tool_calls:
             tool_name = tool_call["name"]
@@ -226,72 +208,12 @@ class BaseAgent(ABC):
             if state.get("user_input"):
                 tool_args["user_input"] = state["user_input"]
 
-            # # ツール呼び出しのハッシュを生成（重複検出用）
-            # tool_call_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
-            # tool_call_hash = hashlib.md5(tool_call_signature.encode()).hexdigest()
-            #
-            # # 重複チェック（過去5分以内の同じツール呼び出しをチェック）
-            # current_time = time.time()
-            # recent_calls = [
-            #     call for call in state["tool_call_history"]
-            #     if current_time - call.get("timestamp", 0) < 300  # 5分以内
-            # ]
-            #
-            # # 同じハッシュの呼び出しが最近あるかチェック
-            # duplicate_found = any(
-            #     call.get("hash") == tool_call_hash
-            #     for call in recent_calls
-            # )
-            #
-            # if duplicate_found:
-            #     # 重複ツール呼び出しを検出
-            #     print(f"⚠️ 重複ツール呼び出しを検出: {tool_name}")
-            #     outputs.append(
-            #         ToolMessage(
-            #             content=f"重複ツール呼び出しを検出しました。同じ操作は既に実行済みです。タスクが完了している可能性があります。",
-            #             tool_call_id=tool_call["id"]
-            #         )
-            #     )
-            #     # タスク完了フラグを設定
-            #     state["task_completed"] = True
-            #     state["completion_reason"] = f"重複ツール呼び出し検出: {tool_name}"
-            #     continue
-            #
-            # # ツール呼び出し履歴に記録
-            # tool_call_record = {
-            #     "timestamp": current_time,
-            #     "tool_name": tool_name,
-            #     "tool_args": tool_args.copy(),
-            #     "hash": tool_call_hash
-            # }
-            # state["tool_call_history"].append(tool_call_record)
 
             # ツールを実行
-            if tool_name in self.tool_map:
-                try:
-                    result = self.tool_map[tool_name].invoke(tool_args)
-                    outputs.append(
-                        ToolMessage(
-                            content=str(result),
-                            tool_call_id=tool_call["id"]
-                        )
-                    )
-                except Exception as e:
-                    outputs.append(
-                        ToolMessage(
-                            content=f"ツール実行エラー: {str(e)}",
-                            tool_call_id=tool_call["id"]
-                        )
-                    )
-            else:
-                outputs.append(
-                    ToolMessage(
-                        content=f"不明なツール: {tool_name}",
-                        tool_call_id=tool_call["id"]
-                    )
-                )
+            response = self.tool_map[tool_name].invoke(tool_args)
+            state["messages"].append(response)
 
-        return {"messages": outputs}
+        return state
 
     def _format_context_for_system_message(self, context: List[Dict[str, Any]]) -> str:
         """会話コンテキストをシステムメッセージ用にフォーマット"""
@@ -351,19 +273,6 @@ class BaseAgent(ABC):
         except Exception as e:
             print(f"⚠️ 会話履歴の保存に失敗: {str(e)}")
 
-    # [既存のメソッドは変更なし - _build_workflow_graph, _create_initial_state, etc.]
-    def _smart_tools_condition(self, state: BaseAgentState):
-        """
-        スマートツール条件 - タスク完了状態とツール呼び出し必要性を考慮
-        """
-        # タスクが完了している場合は終了
-        if state.get("task_completed"):
-            print(f"✅ タスク完了を検出: {state.get('completion_reason', '不明')}")
-            return "__end__"
-
-        # 標準のツール条件をチェック
-        return tools_condition(state)
-
     def _build_workflow_graph(self) -> CompiledStateGraph:
         """
         基本ワークフローグラフを構築 - 標準的なassistant->tools->assistantフロー
@@ -382,7 +291,7 @@ class BaseAgent(ABC):
         builder.add_edge(START, "assistant")
         builder.add_conditional_edges(
             "assistant",
-            self._smart_tools_condition,  # スマートツール条件を使用
+            tools_condition,
         )
         builder.add_edge("tools", "assistant")
 
@@ -404,7 +313,7 @@ class BaseAgent(ABC):
         """
         state_class = self._get_state_class()
         return state_class(
-            messages=[HumanMessage(content=f"{command}(user_input: {user_input})")],
+            messages=[HumanMessage(content=command)],
             user_input=user_input or command,  # user_inputがNoneの場合はcommandを使用
             html_content=None,
             error_message=None,
@@ -416,10 +325,6 @@ class BaseAgent(ABC):
             conversation_context=None,
             trace_id=None,
             is_entry_agent=is_entry_agent,
-            # 重複ツール呼び出し防止用フィールドを初期化
-            tool_call_history=[],
-            task_completed=False,
-            completion_reason=None,
         )
 
     def _process_final_state(self, final_state: BaseAgentState) -> Dict[str, Any]:
@@ -550,199 +455,3 @@ class BaseAgent(ABC):
                 }, ensure_ascii=False)
 
         return _execute_workflow()
-
-@deprecated(
-    "IntelligentMultiAgentOrchestrator is deprecated. Use BaseAgent directly for multi-agent systems.",
-)
-class IntelligentMultiAgentOrchestrator:
-    """
-    インテリジェントマルチエージェント統合管理クラス
-    LLMベースの知的ルーティングで複数のエージェントを統合管理し、適切なエージェントに処理を委譲
-    """
-
-    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True, manager_id: str = None):
-        """
-        インテリジェントマルチエージェント統合管理初期化
-
-        Args:
-            api_key: APIキー
-            llm_type: LLMタイプ
-            use_langfuse: Langfuse使用フラグ
-            manager_id: マネージャーID
-        """
-        self.agents: Dict[str, BaseAgent] = {}
-        self.manager_id = manager_id or f"manager_{id(self)}"
-
-        # インテリジェントルーターを初期化
-        self.intelligent_router = IntelligentAgentRouter(
-            api_key=api_key,
-            llm_type=llm_type,
-            use_langfuse=use_langfuse
-        )
-
-    def _save_collaboration_history(self, 
-                                   session_id: str, 
-                                   user_id: Optional[str],
-                                   command: str, 
-                                   routing_decision: RoutingDecision,
-                                   collaboration_results: List[Dict[str, Any]]):
-        """協作履歴を保存"""
-        try:
-            db = next(get_db())
-
-            ConversationService.save_conversation(
-                db=db,
-                session_id=session_id,
-                user_id=user_id,
-                agent_type="collaboration_manager",
-                agent_manager_id=self.manager_id,
-                user_message=command,
-                agent_response=json.dumps(collaboration_results, ensure_ascii=False),
-                message_type='collaboration',
-                is_collaboration=True,
-                collaboration_agents=[{"agent_type": result["agent_type"]} for result in collaboration_results],
-                routing_decision=routing_decision.model_dump() if routing_decision else None
-            )
-        except Exception as e:
-            print(f"協作履歴の保存に失敗: {str(e)}")
-
-    def register_agent(self, agent_type: str, agent: BaseAgent):
-        """
-        エージェントを登録し、その能力定義をルーターに登録
-
-        Args:
-            agent_type: エージェントタイプ
-            agent: エージェントインスタンス
-        """
-        # エージェントにマネージャーIDを設定
-        agent.agent_manager_id = self.manager_id
-
-        self.agents[agent_type] = agent
-
-        # エージェント能力をルーターに登録
-        capability = agent.get_agent_capability()
-        self.intelligent_router.register_agent_capability(capability)
-
-    def get_agent(self, agent_type: str) -> Optional[BaseAgent]:
-        """エージェントを取得"""
-        return self.agents.get(agent_type)
-
-    def route_command_intelligently(self, command: str, context: Dict[str, Any] = None) -> RoutingDecision:
-        """
-        LLMベースでコマンドを分析して最適なエージェントを決定
-
-        Args:
-            command: ユーザーコマンド
-            context: 追加コンテキスト情報
-
-        Returns:
-            RoutingDecision: ルーティング決定結果
-        """
-        return self.intelligent_router.route_command(command, context)
-
-    def process_command(self, command: str, agent_type: str = None, context: Dict[str, Any] = None, **kwargs) -> str:
-        """
-        コマンドを処理 - インテリジェントルーティングで適切なエージェントに委譲
-
-        Args:
-            command: ユーザーコマンド
-            agent_type: 指定エージェントタイプ（省略時はインテリジェントルーティング）
-            context: 追加コンテキスト情報
-            **kwargs: その他のパラメータ
-
-        Returns:
-            str: JSON形式のレスポンス
-        """
-        # エージェントタイプが指定されていない場合はインテリジェントルーティング
-        routing_decision = None
-        if not agent_type:
-            routing_decision = self.route_command_intelligently(command, context)
-            agent_type = routing_decision.selected_agent
-
-        # エージェントを取得
-        agent = self.get_agent(agent_type)
-        if not agent:
-            error_response = {
-                "error": f"エージェントタイプ '{agent_type}' が見つかりません",
-                "available_agents": list(self.agents.keys())
-            }
-
-            if routing_decision:
-                error_response.update({
-                    "routing_decision": routing_decision.model_dump(),
-                    "alternative_agents": routing_decision.alternative_agents
-                })
-
-            return json.dumps(error_response, ensure_ascii=False)
-
-        # エージェントに処理を委譲
-        result = agent.process_command(command, **kwargs)
-
-        # ルーティング情報を結果に追加
-        if routing_decision:
-            result_data = json.loads(result)
-            result_data["routing_decision"] = routing_decision.model_dump()
-            result = json.dumps(result_data, ensure_ascii=False, indent=2)
-
-        return result
-
-    def process_collaborative_command(self, command: str, context: Dict[str, Any] = None, **kwargs) -> str:
-        """
-        複数エージェント連携が必要なコマンドを処理
-
-        Args:
-            command: ユーザーコマンド
-            context: 追加コンテキスト情報
-            **kwargs: その他のパラメータ
-
-        Returns:
-            str: JSON形式のレスポンス
-        """
-        routing_decision = self.route_command_intelligently(command, context)
-
-        if not routing_decision.requires_collaboration:
-            # 単一エージェントで処理
-            return self.process_command(command, routing_decision.selected_agent, context, **kwargs)
-
-        # 複数エージェント連携処理
-        collaboration_results = []
-        for agent_type in routing_decision.collaboration_sequence:
-            agent = self.get_agent(agent_type)
-            if agent:
-                result = agent.process_command(command, **kwargs)
-                collaboration_results.append({
-                    "agent_type": agent_type,
-                    "result": json.loads(result)
-                })
-
-        # 協作履歴を保存
-        self._save_collaboration_history(
-            kwargs.get("session_id"),
-            kwargs.get("user_id"),
-            command,
-            routing_decision,
-            collaboration_results
-        )
-
-        return json.dumps({
-            "collaboration_mode": True,
-            "routing_decision": routing_decision.model_dump(),
-            "collaboration_results": collaboration_results,
-            "final_message": "複数エージェント連携処理が完了しました",
-            "agent_manager_id": self.manager_id
-        }, ensure_ascii=False, indent=2)
-
-    def get_all_agents_info(self) -> Dict[str, Any]:
-        """全エージェントの情報を取得"""
-        return {
-            agent_type: agent.get_agent_info() 
-            for agent_type, agent in self.agents.items()
-        }
-
-    def get_routing_analytics(self) -> Dict[str, Any]:
-        """ルーティング分析情報を取得"""
-        return self.intelligent_router.get_routing_analytics()
-
-    def provide_routing_feedback(self, command: str, predicted_agent: str, actual_agent: str, success: bool, user_feedback: str = None):
-        """ルーティング結果のフィードバックを提供"""
-        self.intelligent_router.update_routing_feedback(command, predicted_agent, actual_agent, success, user_feedback)

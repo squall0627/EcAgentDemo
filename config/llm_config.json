@@ -12,6 +12,26 @@
       "default": true
     },
     {
+      "value": "ollama_deepseek_r1",
+      "label": "🦙 Ollama - DeepSeek R1 32B",
+      "provider": "ollama",
+      "model": "deepseek-r1:32b",
+      "base_url": "http://localhost:11434",
+      "temperature": 0.7,
+      "color": "ollama",
+      "description": "推理能力に優れた最新のDeepSeekモデル"
+    },
+    {
+      "value": "ollama_qwen3",
+      "label": "🦙 Ollama - Qwen3 30B",
+      "provider": "ollama",
+      "model": "qwen3:30b",
+      "base_url": "http://localhost:11434",
+      "temperature": 0.7,
+      "color": "ollama",
+      "description": "次世代Qwen大規模言語モデル"
+    },
+    {
       "value": "ollama_llama3",
       "label": "🦙 Ollama - Llama3 8B",
       "provider": "ollama",

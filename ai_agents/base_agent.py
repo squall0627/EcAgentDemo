@@ -90,9 +90,12 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def _get_system_message_content(self) -> str:
+    def _get_system_message_content(self, is_entry_agent: bool = True) -> str:
         """
         エージェント固有のシステムメッセージを取得（子クラスで実装必須）
+
+        Args:
+            is_entry_agent: エントリーエージェントかどうか（初期状態設定用）
 
         Returns:
             str: システムメッセージ内容
@@ -161,7 +164,7 @@ class BaseAgent(ABC):
         子クラスでオーバーライド可能
         """
         # エージェント固有のシステムメッセージを取得
-        sys_msg_content = self._get_system_message_content()
+        sys_msg_content = self._get_system_message_content(state.get("is_entry_agent", True))
 
         # 会話履歴コンテキストを読み込み
         if state.get("session_id") and not state.get("conversation_context"):
@@ -188,6 +191,19 @@ class BaseAgent(ABC):
         if thoughts:
             print("\n🤔 LLM Thoughts:")
             print(thoughts)
+
+        # レスポンス内容をJSONとして解析
+        try:
+            content_dict = json.loads(response_content)
+            if isinstance(content_dict, dict):
+                if "html_content" in content_dict:
+                    state["html_content"] = content_dict["html_content"]
+                if "next_actions" in content_dict:
+                    state["next_actions"] = content_dict["next_actions"]
+                if "error" in content_dict:
+                    state["error_message"] = content_dict.get("error")
+        except json.JSONDecodeError:
+            pass
 
         response.content = response_content
         print(f"\n💬 {self.agent_name} Response:\n{response_content}")
@@ -355,6 +371,7 @@ class BaseAgent(ABC):
             "message": response_message,
             "html_content": final_state.get("html_content"),
             "next_actions": final_state.get("next_actions"),
+            "error_message": final_state.get("error_message"),
             "llm_type_used": self.llm_type,
             "llm_info": self.get_llm_info(),
             "agent_type": self.agent_name,

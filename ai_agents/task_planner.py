@@ -371,6 +371,7 @@ class TaskDistributor:
             execution_results = {}
             errors = []
             previous_results = {}  # 前のタスクの結果を保存
+            last_execution_result = {}  # 最後の実行結果を保存
 
             # 各エージェントグループに対してタスクを順次実行
             for target_agent, commands in grouped_tasks.items():
@@ -424,6 +425,9 @@ class TaskDistributor:
                     # 次のタスクのために結果を保存
                     previous_results[target_agent] = result
 
+                    # 最後の実行結果を更新
+                    last_execution_result = result
+
                 except Exception as e:
                     error_msg = f"{target_agent}の実行エラー: {str(e)}"
                     print(f"❌ {error_msg}")
@@ -438,7 +442,8 @@ class TaskDistributor:
                 "total_agents": len(grouped_tasks),
                 "successful_distributions": len(distributed_tasks),
                 "failed_distributions": len(errors),
-                "previous_results": previous_results
+                "previous_results": previous_results,
+                "last_execution_result": last_execution_result
             }
 
         except Exception as e:
@@ -449,7 +454,7 @@ class TaskDistributor:
                 "errors": [str(e)],
                 "total_agents": 0,
                 "successful_distributions": 0,
-                "failed_distributions": 1
+                "failed_distributions": 1,
             }
 
     def _get_or_create_agent_manager(self, target_agent: str):

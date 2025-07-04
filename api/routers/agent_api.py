@@ -118,6 +118,7 @@ class ChatResponse(BaseModel):
     next_actions: Optional[str] = None
     trace_id: Optional[str] = None  # 評価用のLangfuse trace ID
     conversation_id: Optional[int] = None  # base_agentから取得した会話ID
+    error_message: Optional[str] = None
 
 class MultiAgentChatResponse(ChatResponse):
     routing_decision: Optional[Dict[str, Any]] = None
@@ -398,6 +399,7 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
     next_actions = None
     trace_id = None
     conversation_id = None
+    error_message = None
 
     # Langfuseハンドラーを取得
     langfuse_handler = get_global_langfuse_handler()
@@ -413,6 +415,7 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
             next_actions = response_data.get("next_actions")
             trace_id = response_data.get("trace_id")
             conversation_id = response_data.get("conversation_id")  # base_agentから返されるconversation_idを取得
+            error_message = response_data.get("error_message")
 
             # ユーザー向けメッセージを取得
             response = response_data.get("message", response)
@@ -441,7 +444,8 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
         agent_type=agent_type,
         next_actions=next_actions,
         trace_id=trace_id,
-        conversation_id=conversation_id  # base_agentから取得したconversation_idを設定
+        conversation_id=conversation_id,
+        error_message=error_message
     )
 
 def _parse_multi_agent_response(response: str, request: MultiAgentChatRequest) -> MultiAgentChatResponse:

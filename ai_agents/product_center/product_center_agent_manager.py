@@ -22,7 +22,7 @@ class ProductCenterAgentManager(BaseAgent):
         """ProductCenterAgentManager用ツールを初期化"""
         return []
 
-    def _get_system_message_content(self) -> str:
+    def _get_system_message_content(self, is_entry_agent: bool = False) -> str:
         """ProductCenterAgentManager用システムメッセージ"""
         return """
 あなたは多層Agent系統の中間管理者であり、商品センター領域を統括する専門AgentManagerです。

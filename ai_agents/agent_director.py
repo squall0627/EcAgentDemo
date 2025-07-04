@@ -1,7 +1,9 @@
 from typing import List, Any, Dict, Optional
+import json
+
+from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph
-from langgraph.constants import START
-from langgraph.prebuilt import tools_condition
+from langgraph.constants import START, END
 
 from ai_agents.base_agent import BaseAgent, BaseAgentState
 from ai_agents.intelligent_agent_router import AgentCapability
@@ -239,6 +241,24 @@ class AgentDirector(BaseAgent):
 
             # 状態を更新
             state["distributed_tasks"] = distribution_result
+            # TODO
+            if "errors" in distribution_result and len(distribution_result["errors"]) > 0:
+                print("❌ 配信結果にエラーがあります")
+                errors = distribution_result["errors"]
+                if isinstance(errors, (list, dict)):
+                    errors = json.dumps(errors)
+                elif errors is None:
+                    errors = None
+                else:
+                    errors = str(errors)
+                state["error_message"] = errors
+            else:
+                if "last_execution_result" in distribution_result:
+                    print("✅ 配信結果にメッセージがあります")
+                    state["messages"].append(AIMessage(content=distribution_result["last_execution_result"]["message"]))
+                else:
+                    print("⚠️ 配信結果にメッセージがありません")
+                    state["error_message"] = "タスク配信が完了しましたが、結果はありません"
 
             # TaskPlanner情報を更新
             task_planning_info = state.get("task_planning_info", {})
@@ -294,19 +314,19 @@ class AgentDirector(BaseAgent):
         builder.add_node("sorted_task_extractor_router", self._sorted_task_extractor_router_node)
         builder.add_node("task_grouper", self._task_grouper_node)
         builder.add_node("task_distributor", self._task_distributor_node)
-        builder.add_node("assistant", self._assistant_node)
-        builder.add_node("tools", self._custom_tool_node)
+        # builder.add_node("assistant", self._assistant_node)
+        # builder.add_node("tools", self._custom_tool_node)
 
         # エッジを定義
         builder.add_edge(START, "sorted_task_extractor_router")
         builder.add_edge("sorted_task_extractor_router", "task_grouper")
         builder.add_edge("task_grouper", "task_distributor")
-        builder.add_edge("task_distributor", "assistant")
-        builder.add_conditional_edges(
-            "assistant",
-            tools_condition,
-        )
-        builder.add_edge("tools", "assistant")
+        builder.add_edge("task_distributor", END)
+        # builder.add_conditional_edges(
+        #     "assistant",
+        #     tools_condition,
+        # )
+        # builder.add_edge("tools", "assistant")
 
         return builder.compile()
 
@@ -332,7 +352,7 @@ class AgentDirector(BaseAgent):
 
         return response_data
 
-    def _get_system_message_content(self) -> str:
+    def _get_system_message_content(self, is_entry_agent: bool = True) -> str:
         """Director system message with SortedTaskExtractorAndRouterNode integration"""
         return """
 You are the AgentDirector, the supreme commander of a multi-layer Agent system.

@@ -339,7 +339,58 @@
             }
         }
 
-        // メッセージ送信
+        // APIレスポンスを処理する関数
+        async function handleApiResponse(data) {
+            let conversationId = data.conversation_id;
+            let displayContent = '';
+            
+            // エラーメッセージがある場合は特別な形式で表示
+            if (data.error_message) {
+                displayContent = formatErrorMessage(data.error_message);
+            } else if (data.response) {
+                displayContent = data.response;
+            } else {
+                displayContent = 'エラーが発生しました';
+            }
+            
+            return {
+                content: displayContent,
+                conversationId: conversationId,
+                traceId: data.trace_id,
+                hasError: !!data.error_message
+            };
+        }
+        
+        // エラーメッセージを特別な形式でフォーマット
+        function formatErrorMessage(errorMessage) {
+            return `<div class="error-message-container">
+                <div class="error-header">
+                    <span class="error-icon">⚠️</span>
+                    <span class="error-title">エラーが発生しました</span>
+                </div>
+                <div class="error-content">
+                    ${errorMessage.replace(/\n/g, '<br>')}
+                </div>
+                <div class="error-actions">
+                    <button class="error-retry-btn" onclick="retryLastMessage()">再試行</button>
+                </div>
+            </div>`;
+        }
+        
+        // 最後のメッセージを再試行
+        function retryLastMessage() {
+            const messages = document.querySelectorAll('.message.user');
+            if (messages.length > 0) {
+                const lastUserMessage = messages[messages.length - 1];
+                const messageText = lastUserMessage.querySelector('.message-text');
+                if (messageText) {
+                    document.getElementById('commandInput').value = messageText.textContent;
+                    sendMessage();
+                }
+            }
+        }
+
+        // メッセージ送信の修正版
         async function sendMessage() {
             const input = document.getElementById('commandInput');
             const message = input.value.trim();
@@ -363,41 +414,15 @@
                 const agentMode = document.getElementById('agentModeSelect').value;
                 const llmModel = document.getElementById('llmSelect').value;
 
-                // エージェントモードに応じて適切なAPIエンドポイントを選択
-                let apiUrl;
-                let requestBody;
-
-                apiUrl = '/api/agent/director-agent/chat';
-                requestBody = {
+                // APIリクエストの送信
+                const apiUrl = '/api/agent/director-agent/chat';
+                const requestBody = {
                     message: message,
                     user_id: currentUserId,
                     session_id: currentSessionId,
                     llm_type: llmModel,
                     context: {}
                 };
-                // if (agentMode === 'single') {
-                //     // 単一エージェントAPI
-                //     apiUrl = '/api/agent/single-agent/chat';
-                //     requestBody = {
-                //         message: message,
-                //         user_id: currentUserId,
-                //         session_id: currentSessionId,
-                //         llm_type: llmModel,
-                //         context: {}
-                //     };
-                // } else {
-                //     // マルチエージェントAPI
-                //     apiUrl = '/api/agent/multi-agent/chat';
-                //     requestBody = {
-                //         message: message,
-                //         user_id: currentUserId,
-                //         session_id: currentSessionId,
-                //         llm_type: llmModel,
-                //         context: {},
-                //         agent_type: null, // 自動ルーティング
-                //         enable_collaboration: true
-                //     };
-                // }
 
                 const response = await fetch(apiUrl, {
                     method: 'POST',
@@ -412,27 +437,31 @@
                 }
 
                 const data = await response.json();
+                
+                // レスポンスを処理
+                const processedResponse = await handleApiResponse(data);
 
                 // conversation IDが取得できた場合、ユーザーメッセージにも設定
-                if (data.conversation_id) {
+                if (processedResponse.conversationId) {
                     const userMessageElement = document.getElementById(userMessageId);
                     if (userMessageElement) {
-                        userMessageElement.setAttribute('data-conversation-id', data.conversation_id);
+                        userMessageElement.setAttribute('data-conversation-id', processedResponse.conversationId);
                     }
                 }
 
                 // ローディングを削除
                 removeMessage(loadingId);
 
-                // レスポンスを表示（conversation IDを含む）
-                addMessage('assistant', data.response || 'エラーが発生しました', false, data.trace_id, new Date().toISOString(), data.conversation_id);
+                // レスポンスを表示（エラーかどうかに応じて処理）
+                addMessage('assistant', processedResponse.content, false, processedResponse.traceId, new Date().toISOString(), processedResponse.conversationId, processedResponse.hasError);
 
             } catch (error) {
                 console.error('Error:', error);
                 // ローディングを削除
                 removeMessage(loadingId);
                 // エラーメッセージを表示
-                addMessage('assistant', 'エラーが発生しました。もう一度お試しください。', false, null, new Date().toISOString());
+                const errorContent = formatErrorMessage('エラーが発生しました。もう一度お試しください。');
+                addMessage('assistant', errorContent, false, null, new Date().toISOString(), null, true);
             } finally {
                 // 送信ボタンを有効化
                 sendBtn.disabled = false;
@@ -440,8 +469,8 @@
             }
         }
 
-        // メッセージを追加
-        function addMessage(role, content, isLoading = false, traceId = null, timestamp = null, conversationId = null) {
+        // メッセージを追加（エラー表示対応版）
+        function addMessage(role, content, isLoading = false, traceId = null, timestamp = null, conversationId = null, isError = false) {
             const chatMessages = document.getElementById('chatMessages');
             const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
@@ -454,6 +483,11 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             messageDiv.id = messageId;
+            
+            // エラーメッセージの場合は特別なクラスを追加
+            if (isError) {
+                messageDiv.classList.add('error-message');
+            }
 
             // conversation IDをデータ属性として保存
             if (conversationId) {
@@ -476,17 +510,22 @@
                     contentHTML += `<div class="message-timestamp">${new Date(timestamp).toLocaleString('ja-JP')}</div>`;
                 }
 
-                // マークダウン風の簡単な変換
-                let formattedContent = content
-                    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-                    .replace(/`([^`]+)`/g, '<code>$1</code>')
-                    .replace(/\n/g, '<br>');
+                // エラーメッセージの場合はそのまま表示、通常メッセージの場合はマークダウン変換
+                let formattedContent;
+                if (isError) {
+                    formattedContent = content; // エラーメッセージはすでにフォーマット済み
+                } else {
+                    formattedContent = content
+                        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                        .replace(/`([^`]+)`/g, '<code>$1</code>')
+                        .replace(/\n/g, '<br>');
+                }
 
                 contentHTML += `<div class="message-text">${formattedContent}</div>`;
                 contentDiv.innerHTML = contentHTML;
 
-                // アシスタントメッセージにアクションボタンを追加
-                if (role === 'assistant' && !isLoading) {
+                // アシスタントメッセージにアクションボタンを追加（エラーメッセージの場合は追加しない）
+                if (role === 'assistant' && !isLoading && !isError) {
                     const actionsDiv = document.createElement('div');
                     actionsDiv.className = 'message-actions';
 

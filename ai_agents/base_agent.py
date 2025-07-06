@@ -19,10 +19,10 @@ from utils.string_utils import clean_think_output
 
 load_dotenv()
 
-# エージェント基底状態定義 - 全エージェント共通の状態管理
+# エージェント基底状態定義 - 全エージェント共通の状態管理（多層Agent間状態互通対応）
 class BaseAgentState(TypedDict):
     """
-    全エージェント共通の基本状態
+    全エージェント共通の基本状態（多層Agent間での状態共有対応）
     各具象エージェントは必要に応じてこの状態を拡張可能
     """
     messages: Annotated[List[HumanMessage | AIMessage | SystemMessage], add_messages]
@@ -38,6 +38,13 @@ class BaseAgentState(TypedDict):
     trace_id: Optional[str]  # Langfuse trace ID（評価用）
     conversation_id: Optional[int]  # 会話履歴ID（保存用）
     is_entry_agent: Optional[bool]  # エントリーエージェントかどうか（初期状態設定用）
+
+    # 多層Agent間状態互通用の追加フィールド
+    llm_type_used: Optional[str]  # 使用されたLLMタイプ
+    llm_info: Optional[Dict[str, Any]]  # LLM情報
+    agent_name: Optional[str]  # エージェント名
+    response_message: Optional[str]  # レスポンスメッセージ
+    response_data: Optional[Dict[str, Any]]  # 後方互換性用のレスポンスデータ
 
 class BaseAgent(ABC):
     """
@@ -350,6 +357,37 @@ class BaseAgent(ABC):
             is_entry_agent=is_entry_agent,
         )
 
+    def _create_downstream_state(self, shared_state: BaseAgentState, command: str, user_input: str = None) -> BaseAgentState:
+        """
+        下流Agent用の状態を作成（上流から渡された共有状態をベース）
+
+        Args:
+            shared_state: 上流Agentから渡された共有状態
+            command: 新しいコマンド
+            user_input: ユーザーのオリジナル入力内容
+
+        Returns:
+            BaseAgentState: 下流Agent用の状態
+        """
+        # 共有状態をコピーして新しいメッセージを追加
+        state_class = self._get_state_class()
+
+        # 既存のメッセージリストに新しいメッセージを追加
+        # existing_messages = shared_state.get("messages", [])
+        # new_messages = existing_messages + [HumanMessage(content=command)]
+        new_messages = [HumanMessage(content=command)]
+
+        # 共有状態をベースに新しい状態を作成
+        downstream_state = state_class({
+            **shared_state,  # 既存の共有状態をすべて継承
+            "messages": new_messages,  # 新しいメッセージを追加
+            "agent_type": self.agent_name,  # 現在のエージェント名に更新
+            "agent_manager_id": self.agent_manager_id,  # 現在のエージェントマネージャーIDに更新
+            "is_entry_agent": False,  # 下流Agentなのでfalse
+        })
+
+        return downstream_state
+
     def _process_final_state(self, final_state: BaseAgentState) -> Dict[str, Any]:
         """
         最終状態を処理してレスポンスを構築 - 子クラスでオーバーライド可能
@@ -416,9 +454,9 @@ class BaseAgent(ABC):
             "llm_info": self.get_llm_info()
         }
 
-    def process_command(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False) -> str:
+    def process_command(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False, shared_state: BaseAgentState = None) -> BaseAgentState:
         """
-        ユーザーコマンドを処理 - 統一インターフェース
+        ユーザーコマンドを処理 - 統一インターフェース（多層Agent間状態互通対応）
 
         Args:
             command: ユーザーコマンド
@@ -427,9 +465,10 @@ class BaseAgent(ABC):
             session_id: セッションID
             user_id: ユーザーID
             is_entry_agent: エントリーエージェントかどうか（初期状態の設定に影響）
+            shared_state: 上流Agentから渡された共有状態（下流Agentの場合に使用）
 
         Returns:
-            str: JSON形式のレスポンス
+            BaseAgentState: エージェント実行結果の状態オブジェクト（多層Agent間での状態共有用）
         """
         # observeデコレータを取得（Langfuseが利用可能な場合のみ適用）
         workflow_name = self._get_workflow_name()
@@ -443,8 +482,18 @@ class BaseAgent(ABC):
                 if llm_type and llm_type != self.llm_type:
                     self.switch_llm(llm_type)
 
-                # 初期状態を作成
-                initial_state = self._create_initial_state(command, user_input, session_id, user_id, is_entry_agent)
+                # 初期状態を作成または共有状態を利用
+                if is_entry_agent:
+                    # エントリーAgentの場合：新しい初期状態を作成
+                    initial_state = self._create_initial_state(command, user_input, session_id, user_id, is_entry_agent)
+                else:
+                    # 下流Agentの場合：上流から渡された共有状態を利用
+                    if shared_state is None:
+                        # shared_stateが渡されていない場合は新しい状態を作成（後方互換性）
+                        initial_state = self._create_initial_state(command, user_input, session_id, user_id, is_entry_agent)
+                    else:
+                        # 共有状態をベースに新しいメッセージを追加
+                        initial_state = self._create_downstream_state(shared_state, command, user_input)
 
                 # ワークフローを実行（CallbackHandlerを使用）
                 config = self.langfuse_handler.get_config(workflow_name, session_id, user_id)
@@ -456,10 +505,19 @@ class BaseAgent(ABC):
                 # trace_idを最終状態に保存
                 final_state["trace_id"] = trace_id
 
-                # レスポンスを構築
+                # 最終状態を処理してレスポンスデータを構築
                 response_data = self._process_final_state(final_state)
 
-                return json.dumps(response_data, ensure_ascii=False, indent=2)
+                # BaseAgentStateに必要な追加フィールドを設定
+                final_state.update({
+                    "llm_type_used": self.llm_type,
+                    "llm_info": self.get_llm_info(),
+                    "agent_name": self.agent_name,
+                    "response_message": response_data.get("message", ""),
+                    "response_data": response_data  # 後方互換性のため
+                })
+
+                return final_state
 
             except Exception as e:
                 error_msg = f"ワークフロー実行に失敗しました: {str(e)}"
@@ -468,14 +526,36 @@ class BaseAgent(ABC):
                 if not trace_id:
                     trace_id = self.langfuse_handler.get_current_trace_id()
 
-                return json.dumps({
-                    "message": error_msg,
-                    "error": str(e),
-                    "llm_type_used": self.llm_type,
-                    "llm_info": self.get_llm_info(),
+                # エラー時のBaseAgentState構築
+                error_state = self._get_state_class()({
+                    "messages": [],
+                    "user_input": user_input or command,
+                    "html_content": None,
+                    "error_message": error_msg,
+                    "next_actions": None,
+                    "session_id": session_id,
+                    "user_id": user_id,
                     "agent_type": self.agent_name,
                     "agent_manager_id": self.agent_manager_id,
-                    "trace_id": trace_id
-                }, ensure_ascii=False)
+                    "conversation_context": None,
+                    "trace_id": trace_id,
+                    "conversation_id": None,
+                    "is_entry_agent": is_entry_agent,
+                    "llm_type_used": self.llm_type,
+                    "llm_info": self.get_llm_info(),
+                    "agent_name": self.agent_name,
+                    "response_message": error_msg,
+                    "response_data": {
+                        "message": error_msg,
+                        "error": str(e),
+                        "llm_type_used": self.llm_type,
+                        "llm_info": self.get_llm_info(),
+                        "agent_type": self.agent_name,
+                        "agent_manager_id": self.agent_manager_id,
+                        "trace_id": trace_id
+                    }
+                })
+
+                return error_state
 
         return _execute_workflow()

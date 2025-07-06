@@ -226,11 +226,13 @@ class AgentDirector(BaseAgent):
                     original_user_input = messages[0].content
 
             # TaskDistributorでタスク配信・実行
+            # AgentDirectorの現在の状態を初期共有状態として渡す
             distribution_result = self.task_distributor.distribute_tasks(
                 grouped_tasks,
                 original_user_input,
                 session_id=state.get("session_id", None),
                 user_id=state.get("user_id", None),
+                initial_shared_state=state  # AgentDirectorの状態を渡す
             )
 
             print(f"✅ タスク配信完了: {distribution_result['successful_distributions']}個のエージェントに配信成功")

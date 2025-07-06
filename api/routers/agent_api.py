@@ -389,8 +389,8 @@ async def get_available_llms():
         raise HTTPException(status_code=500, detail=f"LLM一覧取得に失敗しました: {str(e)}")
 
 # === ヘルパー関数 ===
-def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
-    """エージェントレスポンスを解析してChatResponseに変換"""
+def _parse_agent_response(response, request: ChatRequest) -> ChatResponse:
+    """エージェントレスポンス（BaseAgentStateまたはJSON文字列）を解析してChatResponseに変換"""
     html_content = None
     action_type = None
     workflow_step = None
@@ -400,12 +400,36 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
     trace_id = None
     conversation_id = None
     error_message = None
+    response_message = None
 
     # Langfuseハンドラーを取得
     langfuse_handler = get_global_langfuse_handler()
 
     try:
-        if response.strip().startswith('{'):
+        # BaseAgentStateオブジェクトの場合
+        if isinstance(response, dict) and "messages" in response:
+            # BaseAgentStateから直接値を取得
+            html_content = response.get("html_content")
+            action_type = response.get("action_type")
+            workflow_step = response.get("current_step")
+            llm_type_used = response.get("llm_type_used", request.llm_type)
+            agent_type = response.get("agent_type") or response.get("agent_name")
+            next_actions = response.get("next_actions")
+            trace_id = response.get("trace_id")
+            conversation_id = response.get("conversation_id")
+            error_message = response.get("error_message")
+            response_message = response.get("response_message")
+
+            # レスポンスメッセージが設定されていない場合、messagesから取得
+            if not response_message and response.get("messages"):
+                response_message = response["messages"][-1].content if response["messages"] else "処理が完了しました"
+
+            # 後方互換性のため、response_dataからも取得を試行
+            if not response_message and response.get("response_data"):
+                response_message = response["response_data"].get("message", "処理が完了しました")
+
+        # JSON文字列の場合（後方互換性）
+        elif isinstance(response, str) and response.strip().startswith('{'):
             response_data = json.loads(response)
             html_content = response_data.get("html_content")
             action_type = response_data.get("action_type")
@@ -414,14 +438,16 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
             agent_type = response_data.get("agent_type")
             next_actions = response_data.get("next_actions")
             trace_id = response_data.get("trace_id")
-            conversation_id = response_data.get("conversation_id")  # base_agentから返されるconversation_idを取得
+            conversation_id = response_data.get("conversation_id")
             error_message = response_data.get("error_message")
+            response_message = response_data.get("message", response)
+        else:
+            # 文字列レスポンスの場合
+            response_message = str(response)
 
-            # ユーザー向けメッセージを取得
-            response = response_data.get("message", response)
-    except (json.JSONDecodeError, KeyError):
-        print(f"⚠️ レスポンス解析エラー: {response}")
-        pass
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"⚠️ レスポンス解析エラー: {e}")
+        response_message = str(response) if response else "処理が完了しました"
 
     # trace_idが設定されていない場合、現在のtraceから取得を試行
     if not trace_id and langfuse_handler.is_available():
@@ -434,7 +460,7 @@ def _parse_agent_response(response: str, request: ChatRequest) -> ChatResponse:
             print(f"⚠️ trace_id取得エラー: {e}")
 
     return ChatResponse(
-        response=response,
+        response=response_message or "処理が完了しました",
         session_id=request.session_id,
         user_id=request.user_id,
         html_content=html_content,
@@ -496,7 +522,8 @@ async def execute_product_management_workflow(request: ChatRequest):
         response = agent.process_command(
             request.message, 
             session_id=request.session_id,
-            llm_type=request.llm_type
+            llm_type=request.llm_type,
+            is_entry_agent=True
         )
 
         # レスポンス解析と構築（trace_idを含む）

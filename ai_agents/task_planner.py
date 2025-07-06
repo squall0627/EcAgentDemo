@@ -346,7 +346,7 @@ class TaskDistributor:
         self.registered_managers = registered_managers or {}
         self.agent_manager_instances = {}  # 作成済みインスタンスのキャッシュ
 
-    def distribute_tasks(self, grouped_tasks: Dict[str, List[Dict[str, Any]]], original_user_input: str = "", session_id: str = None, user_id: str = None) -> Dict[str, Any]:
+    def distribute_tasks(self, grouped_tasks: Dict[str, List[Dict[str, Any]]], original_user_input: str = "", session_id: str = None, user_id: str = None, initial_shared_state=None) -> Dict[str, Any]:
         """
         グループ化されたタスクを下流AgentManagerに配信・実行
 
@@ -355,6 +355,7 @@ class TaskDistributor:
             original_user_input: ユーザーの元入力
             session_id: セッションID（オプション）
             user_id: ユーザーID（オプション）
+            initial_shared_state: AgentDirectorから渡された初期共有状態（BaseAgentState）
 
         Returns:
             配信・実行結果辞書
@@ -374,6 +375,9 @@ class TaskDistributor:
             last_execution_result = {}  # 最後の実行結果を保存
 
             # 各エージェントグループに対してタスクを順次実行
+            # AgentDirectorから渡された初期共有状態を使用、なければNoneで初期化
+            shared_state = initial_shared_state  # AgentDirectorから渡された共有状態を利用
+
             for target_agent, commands in grouped_tasks.items():
                 print(f"🎯 {target_agent}に{len(commands)}個のコマンドを実行中...")
 
@@ -399,15 +403,29 @@ class TaskDistributor:
                         llm_type=self.llm_handler.llm_type,
                         session_id=session_id,
                         user_id=user_id,
-                        is_entry_agent=False
+                        is_entry_agent=False,
+                        shared_state=shared_state
                     )
 
-                    # 結果を解析（JSON文字列の場合はパース）
+                    # 結果を解析（BaseAgentStateオブジェクトまたはJSON文字列の場合の処理）
                     if isinstance(result, str):
+                        # 従来のJSON文字列レスポンス（後方互換性）
                         try:
                             result = json.loads(result)
                         except json.JSONDecodeError:
                             result = {"message": result, "raw_response": True}
+                    elif isinstance(result, dict):
+                        # BaseAgentStateオブジェクトの場合、そのまま使用
+                        # 必要に応じて後方互換性のためのフィールドを追加
+                        if "message" not in result and result.get("response_message"):
+                            result["message"] = result["response_message"]
+                        elif "message" not in result and result.get("messages"):
+                            # messagesから最後のメッセージを取得
+                            last_message = result["messages"][-1] if result["messages"] else None
+                            if last_message and hasattr(last_message, 'content'):
+                                result["message"] = last_message.content
+                            else:
+                                result["message"] = "処理が完了しました"
 
                     print(f"✅ {target_agent}の実行完了")
 
@@ -427,6 +445,12 @@ class TaskDistributor:
 
                     # 最後の実行結果を更新
                     last_execution_result = result
+
+                    # 共有状態を更新（次のAgentで使用）
+                    if isinstance(result, dict) and "messages" in result:
+                        # BaseAgentStateオブジェクトの場合、そのまま共有状態として使用
+                        shared_state = result
+                        print(f"✅ {target_agent}の実行結果を共有状態として保存")
 
                 except Exception as e:
                     error_msg = f"{target_agent}の実行エラー: {str(e)}"

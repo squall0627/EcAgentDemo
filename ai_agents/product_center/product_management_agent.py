@@ -52,7 +52,7 @@ class ProductManagementAgent(BaseAgent):
             BulkUpdateStockTool(),
             BulkUpdatePriceTool(),
             ValidateCanPublishProductTool(),
-            GenerateHtmlTool(),
+            # GenerateHtmlTool(),
             PublishProductsTool(),
             UnpublishProductsTool()
         ]

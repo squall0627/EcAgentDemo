@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import TypedDict, Annotated, List, Dict, Any, Optional, Type
 
 from dotenv import load_dotenv
+from langchain_core.messages import ToolMessage
 from langgraph.constants import START
 from langchain.schema import HumanMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph
@@ -224,26 +225,62 @@ class BaseAgent(ABC):
         カスタムツールノード - session_idとuser_idを状態から取得してツールに渡す
         """
 
-        for tool_call in state["messages"][-1].tool_calls:
+        last_message = state["messages"][-1]
+
+        # tool_callsが存在しない場合は何もしない
+        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
+            return state
+
+        tool_state = {"messages": []}
+
+        for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
+            tool_call_id = tool_call["id"]
 
-            # 状態からsession_idとuser_idを取得してツール引数に追加
-            if state.get("session_id"):
-                tool_args["session_id"] = state["session_id"]
-            if state.get("user_id"):
-                tool_args["user_id"] = state["user_id"]
-            if state.get("is_entry_agent"):
-                tool_args["is_entry_agent"] = False
-            if state.get("user_input"):
-                tool_args["user_input"] = state["user_input"]
+            try:
+                # 状態からsession_idとuser_idを取得してツール引数に追加
+                if state.get("session_id"):
+                    tool_args["session_id"] = state["session_id"]
+                if state.get("user_id"):
+                    tool_args["user_id"] = state["user_id"]
+                if state.get("is_entry_agent"):
+                    tool_args["is_entry_agent"] = False
+                if state.get("user_input"):
+                    tool_args["user_input"] = state["user_input"]
 
+                # ツールを実行
+                if tool_name in self.tool_map:
+                    tool_response = self.tool_map[tool_name].invoke(tool_args)
 
-            # ツールを実行
-            response = self.tool_map[tool_name].invoke(tool_args)
-            state["messages"].append(response)
+                    # ツールの実行結果をToolMessageとして作成
+                    tool_message = ToolMessage(
+                        content=str(tool_response),
+                        tool_call_id=tool_call_id
+                    )
 
-        return state
+                    tool_state["messages"].append(tool_message)
+                    print(f"✅ Tool '{tool_name}' executed successfully")
+
+                else:
+                    # ツールが存在しない場合のエラーレスポンス
+                    error_message = ToolMessage(
+                        content=f"Error: Tool '{tool_name}' not found in available tools",
+                        tool_call_id=tool_call_id
+                    )
+                    tool_state["messages"].append(error_message)
+                    print(f"❌ Tool '{tool_name}' not found in tool_map")
+
+            except Exception as e:
+                # ツール実行エラー時のレスポンス
+                error_message = ToolMessage(
+                    content=f"Error executing tool '{tool_name}': {str(e)}",
+                    tool_call_id=tool_call_id
+                )
+                tool_state["messages"].append(error_message)
+                print(f"❌ Tool execution error for '{tool_name}': {e}")
+
+        return tool_state
 
     def _format_context_for_system_message(self, context: List[Dict[str, Any]]) -> str:
         """会話コンテキストをシステムメッセージ用にフォーマット"""
@@ -316,6 +353,7 @@ class BaseAgent(ABC):
         # 基本ノードを追加
         builder.add_node("assistant", self._assistant_node)
         builder.add_node("tools", self._custom_tool_node)
+        # builder.add_node("tools", self.tool_node)
 
         # 基本エッジを定義
         builder.add_edge(START, "assistant")

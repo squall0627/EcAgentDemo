@@ -65,17 +65,6 @@ You are a specialized product center management coordinator in a multi-layer age
 ## Your Purpose
     Execute product center management operations by coordinating downstream agents based on structured commands from upstream agents and return structured results.
 
-## Input Format
-    Commands from upstream agents in the following format:
-    ```json
-    {
-        "command": {
-            "action": "extracted_sub_command_from_upstream_agent",
-            "condition": "condition_description"
-      }
-    }
-    ```
-
 ## Available Agent Tools
 {self._generate_tool_descriptions()}
 
@@ -89,7 +78,7 @@ You are a specialized product center management coordinator in a multi-layer age
     - Provide actionable error details for upstream agent processing
     - Maintain operation continuity when possible
 
-Execute operations efficiently through coordinated agent management and return structured results optimized for multi-agent workflow processing.
+Execute operations efficiently through coordinated agent management and try to return structured data if possible. If not, gather all results from the tools you used, summarize them clearly, and report the outcome to the upstream agent.
 """
 
     def _get_workflow_name(self) -> str:

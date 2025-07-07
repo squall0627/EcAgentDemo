@@ -8,25 +8,129 @@ from utils.langfuse_handler import LangfuseHandler
 from utils.string_utils import clean_think_output
 
 
+class AgentManagerRegistry:
+    """
+    AgentManagerインスタンス管理レジストリ
+    セッション・ユーザー別にAgentManagerインスタンスを管理し、
+    一つのセッション内で各AgentManagerが一度だけインスタンス化されることを保証する
+    """
+
+    def __init__(self, llm_handler: LLMHandler, registered_managers: Dict[str, Any] = None):
+        """
+        AgentManagerRegistry初期化
+
+        Args:
+            llm_handler: LLMHandlerインスタンス
+            registered_managers: 登録済みAgentManagerクラス辞書
+        """
+        self.llm_handler = llm_handler
+        self.registered_managers = registered_managers or {}
+        # セッション・ユーザー別のインスタンスキャッシュ
+        # 構造: {(user_id, session_id): {agent_name: agent_instance}}
+        self._instance_cache = {}
+
+    def get_or_create_agent_manager(self, target_agent: str, user_id: str = None, session_id: str = None):
+        """
+        対象エージェントのAgentManagerインスタンスを取得または作成
+        セッション・ユーザー別に分離されたインスタンスを管理
+
+        Args:
+            target_agent: 対象エージェント名
+            user_id: ユーザーID（セッション分離用）
+            session_id: セッションID（セッション分離用）
+
+        Returns:
+            AgentManagerインスタンス、見つからない場合はNone
+        """
+        # セッション・ユーザーキーを生成
+        cache_key = (user_id or "default_user", session_id or "default_session")
+
+        # キャッシュから取得を試行
+        if cache_key in self._instance_cache:
+            if target_agent in self._instance_cache[cache_key]:
+                return self._instance_cache[cache_key][target_agent]
+
+        # 登録済みマネージャーから作成
+        if target_agent in self.registered_managers:
+            manager_class = self.registered_managers[target_agent]
+            try:
+                # AgentManagerインスタンスを作成
+                manager_instance = manager_class(
+                    api_key=self.llm_handler.api_key,
+                    llm_type=self.llm_handler.llm_type,
+                    use_langfuse=True
+                )
+
+                # キャッシュに保存
+                if cache_key not in self._instance_cache:
+                    self._instance_cache[cache_key] = {}
+                self._instance_cache[cache_key][target_agent] = manager_instance
+
+                print(f"✅ {target_agent}のインスタンスを作成しました (user: {user_id}, session: {session_id})")
+                return manager_instance
+
+            except Exception as e:
+                print(f"❌ {target_agent}のインスタンス作成エラー: {e}")
+                return None
+
+        print(f"⚠️ 登録されていないAgentManager: {target_agent}")
+        return None
+
+    def clear_session_cache(self, user_id: str = None, session_id: str = None):
+        """
+        指定されたセッションのキャッシュをクリア
+
+        Args:
+            user_id: ユーザーID
+            session_id: セッションID
+        """
+        cache_key = (user_id or "default_user", session_id or "default_session")
+        if cache_key in self._instance_cache:
+            del self._instance_cache[cache_key]
+            print(f"🧹 セッションキャッシュをクリアしました (user: {user_id}, session: {session_id})")
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        キャッシュ統計情報を取得
+
+        Returns:
+            キャッシュ統計情報
+        """
+        stats = {
+            "total_sessions": len(self._instance_cache),
+            "sessions": {}
+        }
+
+        for (user_id, session_id), agents in self._instance_cache.items():
+            session_key = f"{user_id}:{session_id}"
+            stats["sessions"][session_key] = {
+                "agent_count": len(agents),
+                "agents": list(agents.keys())
+            }
+
+        return stats
+
+
 class SortedTaskExtractorAndRouterNode:
     """
     統合タスク抽出・ルーティング・ソートノード
     ユーザーの自然言語入力から構造化されたタスクリストを抽出し、
     適切なAgentManagerにルーティングし、実行優先順位を付与する
-    Step 1: Extract structured intent, route to agents, and sort by priority
+    ステップ1: 構造化意図抽出、エージェントルーティング、優先順位ソート
     """
 
-    def __init__(self, llm_handler: LLMHandler, langfuse_handler: LangfuseHandler, registered_managers: Dict[str, Any] = None):
+    def __init__(self, llm_handler: LLMHandler, langfuse_handler: LangfuseHandler, agent_manager_registry: AgentManagerRegistry = None):
         """
         SortedTaskExtractorAndRouterNode初期化
 
         Args:
             llm_handler: LLMHandlerインスタンス
             langfuse_handler: LangfuseHandlerインスタンス
+            agent_manager_registry: AgentManagerRegistryインスタンス
         """
         self.llm_handler = llm_handler
         self.langfuse_handler = langfuse_handler
-        self.registered_managers = registered_managers
+        self.agent_manager_registry = agent_manager_registry
 
     def _get_combined_prompt(self) -> str:
         """統合タスク抽出・ルーティング・ソート用のプロンプトを取得"""
@@ -46,14 +150,14 @@ You are a high-performance task decomposition, routing, and prioritization syste
 
 ## Output Format (JSON):
 [
-  {
+  {{
     "target_agent": "agent_manager_name",
-    "command": {
+    "command": {{
       "action": "action_name",
       "condition": "condition_description"
-    },
+    }},
     "priority": 1
-  }
+  }}
 ]
 
 ## Available Target Agents:
@@ -71,43 +175,43 @@ You are a high-performance task decomposition, routing, and prioritization syste
 Input: "在庫がない商品を棚下げして、価格が5000円以上のものは値下げしてください。"
 Output:
 [
-  {
+  {{
     "target_agent": "ProductCenterAgentManager",
-    "command": {
+    "command": {{
       "action": "deactivate_product",
       "condition": "在庫なし"
-    },
+    }},
     "priority": 1
-  },
-  {
+  }},
+  {{
     "target_agent": "ProductCenterAgentManager",
-    "command": {
+    "command": {{
       "action": "discount_product",
       "condition": "価格 > 5000"
-    },
+    }},
     "priority": 2
-  }
+  }}
 ]
 
 Input: "Search for coffee products and update their inventory"
 Output:
 [
-  {
+  {{
     "target_agent": "ProductCenterAgentManager",
-    "command": {
+    "command": {{
       "action": "search_product",
       "condition": "product_name contains 'coffee'"
-    },
+    }},
     "priority": 1
-  },
-  {
+  }},
+  {{
     "target_agent": "ProductCenterAgentManager",
-    "command": {
+    "command": {{
       "action": "update_inventory",
       "condition": "product_name contains 'coffee'"
-    },
+    }},
     "priority": 2
-  }
+  }}
 ]
 
 Now extract, route, and prioritize tasks from the following user input:
@@ -191,45 +295,56 @@ Now extract, route, and prioritize tasks from the following user input:
             print(f"❌ JSON解析エラー: {e}")
             print(f"レスポンス内容: {response_content}")
             # フォールバック: 基本的なタスクを返す
-            return self._create_fallback_task(user_input)
+            raise e
         except Exception as e:
             print(f"❌ 統合タスク処理エラー: {e}")
-            return self._create_fallback_task(user_input)
+            raise e
 
-    def _create_fallback_task(self, user_input: str) -> List[Dict[str, Any]]:
-        """
-        エラー時のフォールバックタスクを作成
-
-        Args:
-            user_input: ユーザー入力
-
-        Returns:
-            基本的なタスクリスト
-        """
-        # TODO
-        return [
-            {
-                "target_agent": "ProductCenterAgentManager",
-                "command": {
-                    "action": "search_product",
-                    "condition": f"user_request: {user_input}"
-                },
-                "priority": 1
-            }
-        ]
+    # def _create_fallback_task(self, user_input: str) -> List[Dict[str, Any]]:
+    #     """
+    #     エラー時のフォールバックタスクを作成
+    #
+    #     Args:
+    #         user_input: ユーザー入力
+    #
+    #     Returns:
+    #         基本的なタスクリスト
+    #     """
+    #     # TODO
+    #     return [
+    #         {
+    #             "target_agent": "ProductCenterAgentManager",
+    #             "command": {
+    #                 "action": "search_product",
+    #                 "condition": f"user_request: {user_input}"
+    #             },
+    #             "priority": 1
+    #         }
+    #     ]
 
     def _generate_downstream_agents_descriptions(self) -> str:
-        """Generate descriptions of downstream agents"""
+        """下流エージェントの説明を生成"""
         descriptions = []
-        for agent in self.registered_managers:
-            descriptions.append(
-                f"- {agent.agent_name}: {agent.get_agent_capability().format_for_llm_tool_description()}")
+        if self.agent_manager_registry and self.agent_manager_registry.registered_managers:
+            for agent_name, agent_class in self.agent_manager_registry.registered_managers.items():
+                # 一時的にインスタンスを作成して能力情報を取得
+                try:
+                    temp_instance = agent_class(
+                        api_key=self.llm_handler.api_key,
+                        llm_type=self.llm_handler.llm_type,
+                        use_langfuse=True
+                    )
+                    descriptions.append(
+                        f"- {agent_name}: {temp_instance.get_agent_capability().format_for_llm_tool_description()}")
+                except Exception as e:
+                    print(f"⚠️ {agent_name}の能力情報取得エラー: {e}")
+                    descriptions.append(f"- {agent_name}: エージェント管理システム")
         return "\n".join(descriptions)
 
 class TaskGrouper:
     """
     タスクグループ化器 - 同じ下流AgentManagerを使用する隣接タスクを合併
-    Step 2: Task Grouping (同類タスクの集約)
+    ステップ2: タスクグループ化（同類タスクの集約）
     """
 
     def __init__(self):
@@ -341,20 +456,19 @@ class TaskGrouper:
 class TaskDistributor:
     """
     タスク配信器 - グループ化されたタスクを下流AgentManagerに配信・実行
-    Step 3: 逐層下発任務到下游 AgentManager (Task Distribution and Execution)
+    ステップ3: 下流AgentManagerへのタスク配信・実行
     """
 
-    def __init__(self, llm_handler: LLMHandler, registered_managers: Dict[str, Any] = None):
+    def __init__(self, llm_handler: LLMHandler, agent_manager_registry: AgentManagerRegistry = None):
         """
         TaskDistributor初期化
 
         Args:
             llm_handler: LLMHandlerインスタンス
-            registered_managers: 登録済みAgentManagerクラス辞書
+            agent_manager_registry: AgentManagerRegistryインスタンス
         """
         self.llm_handler = llm_handler
-        self.registered_managers = registered_managers or {}
-        self.agent_manager_instances = {}  # 作成済みインスタンスのキャッシュ
+        self.agent_manager_registry = agent_manager_registry
 
     def distribute_tasks(self, grouped_tasks: Dict[str, List[Dict[str, Any]]], original_user_input: str = "", session_id: str = None, user_id: str = None, initial_shared_state=None) -> Dict[str, Any]:
         """
@@ -393,7 +507,9 @@ class TaskDistributor:
 
                 try:
                     # AgentManagerインスタンスを取得または作成
-                    agent_manager = self._get_or_create_agent_manager(target_agent)
+                    agent_manager = self.agent_manager_registry.get_or_create_agent_manager(
+                        target_agent, user_id, session_id
+                    ) if self.agent_manager_registry else None
 
                     if not agent_manager:
                         error_msg = f"AgentManagerが見つかりません: {target_agent}"
@@ -491,43 +607,6 @@ class TaskDistributor:
                 "failed_distributions": 1,
             }
 
-    def _get_or_create_agent_manager(self, target_agent: str):
-        """
-        対象エージェントのAgentManagerインスタンスを取得または作成
-
-        Args:
-            target_agent: 対象エージェント名
-
-        Returns:
-            AgentManagerインスタンス、見つからない場合はNone
-        """
-        # キャッシュから取得を試行
-        if target_agent in self.agent_manager_instances:
-            return self.agent_manager_instances[target_agent]
-
-        # 登録済みマネージャーから作成
-        if target_agent in self.registered_managers:
-            manager_class = self.registered_managers[target_agent]
-            try:
-                # AgentManagerインスタンスを作成
-                manager_instance = manager_class(
-                    api_key=self.llm_handler.api_key,
-                    llm_type=self.llm_handler.llm_type,
-                    use_langfuse=True
-                )
-
-                # キャッシュに保存
-                self.agent_manager_instances[target_agent] = manager_instance
-                print(f"✅ {target_agent}のインスタンスを作成しました")
-
-                return manager_instance
-
-            except Exception as e:
-                print(f"❌ {target_agent}のインスタンス作成エラー: {e}")
-                return None
-
-        print(f"⚠️ 登録されていないAgentManager: {target_agent}")
-        return None
 
     def _integrate_commands(self, commands: List[Dict[str, Any]], previous_results: Dict[str, Any] = None) -> str:
         """

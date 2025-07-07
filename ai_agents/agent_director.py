@@ -7,7 +7,7 @@ from langgraph.constants import START, END
 
 from ai_agents.base_agent import BaseAgent, BaseAgentState
 from ai_agents.intelligent_agent_router import AgentCapability
-from ai_agents.task_planner import SortedTaskExtractorAndRouterNode, TaskGrouper, TaskDistributor
+from ai_agents.task_planner import AgentManagerRegistry, SortedTaskExtractorAndRouterNode, TaskGrouper, TaskDistributor
 from ai_agents.product_center.product_center_agent_manager import ProductCenterAgentManager
 
 
@@ -37,20 +37,29 @@ class AgentDirector(BaseAgent):
         )
 
         # 下流AgentManagerを事前登録
-        self.registered_agent_managers = {
+        registered_agent_managers = {
             "ProductCenterAgentManager": ProductCenterAgentManager
         }
 
+        # AgentManagerRegistryを初期化（共有インスタンス管理）
+        self.agent_manager_registry = AgentManagerRegistry(
+            self.llm_handler,
+            registered_managers=registered_agent_managers
+        )
+
         # SortedTaskExtractorAndRouterNodeを初期化（Combined Step 1 & 2: 構造化意図抽出・ルーティング・ソート）
-        self.sorted_task_extractor_router = SortedTaskExtractorAndRouterNode(self.llm_handler, self.langfuse_handler,
-                                                                             registered_managers=self.registered_agent_managers)
+        self.sorted_task_extractor_router = SortedTaskExtractorAndRouterNode(
+            self.llm_handler, 
+            self.langfuse_handler,
+            agent_manager_registry=self.agent_manager_registry
+        )
         # TaskGrouperを初期化（Step 3: タスクグループ化）
         self.task_grouper = TaskGrouper()
 
         # TaskDistributorを初期化（Step 4: タスク配信）
         self.task_distributor = TaskDistributor(
             self.llm_handler,
-            registered_managers=self.registered_agent_managers
+            agent_manager_registry=self.agent_manager_registry
         )
 
     def _initialize_tools(self):

@@ -92,7 +92,7 @@ You are a specialized product publish/unpublish management agent in a multi-laye
     - Provide actionable error details for upstream agent processing
     - Maintain operation continuity when possible
 
-Execute operations efficiently and return structured results optimized for multi-agent workflow processing.
+Execute operations efficiently and try to return structured data if possible. If not, gather all results from the tools you used, summarize them clearly, and report the outcome to the upstream agent.
 """
 
     def _get_workflow_name(self) -> str:

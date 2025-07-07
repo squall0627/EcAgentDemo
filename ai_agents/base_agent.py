@@ -16,7 +16,6 @@ from llm.llm_handler import LLMHandler
 from utils.langfuse_handler import LangfuseHandler
 from services.conversation_service import ConversationService
 from db.database import get_db
-from utils.string_utils import clean_think_output
 
 load_dotenv()
 
@@ -30,7 +29,7 @@ class BaseAgentState(TypedDict):
     user_input: str
     html_content: Optional[str]
     error_message: Optional[str]
-    next_actions: Optional[str]
+    next_actions: Optional[str | List[str]]  # 次のアクション（文字列またはアクションリスト）
     session_id: Optional[str]
     user_id: Optional[str]
     agent_type: Optional[str]  # エージェント種別を識別するフィールド
@@ -130,7 +129,7 @@ class BaseAgent(ABC):
         """
         pass
 
-    def _get_state_class(self) -> Type[TypedDict]:
+    def get_state_class(self) -> Type[TypedDict]:
         """
         使用する状態クラスを取得（子クラスでオーバーライド可能）
 
@@ -195,6 +194,7 @@ class BaseAgent(ABC):
         # LLMを呼び出してメッセージに追加
         response = self.llm_with_tools.invoke([sys_msg] + state["messages"])
         response_content = response.content.strip()
+        from utils.string_utils import clean_think_output
         response_content, thoughts = clean_think_output(response_content)
         if thoughts:
             print("\n🤔 LLM Thoughts:")
@@ -231,7 +231,7 @@ class BaseAgent(ABC):
         if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
             return state
 
-        tool_state = {"messages": []}
+        outputs = []
 
         for tool_call in last_message.tool_calls:
             tool_name = tool_call["name"]
@@ -239,19 +239,39 @@ class BaseAgent(ABC):
             tool_call_id = tool_call["id"]
 
             try:
-                # 状態からsession_idとuser_idを取得してツール引数に追加
-                if state.get("session_id"):
-                    tool_args["session_id"] = state["session_id"]
-                if state.get("user_id"):
-                    tool_args["user_id"] = state["user_id"]
-                if state.get("is_entry_agent"):
-                    tool_args["is_entry_agent"] = False
-                if state.get("user_input"):
-                    tool_args["user_input"] = state["user_input"]
-
-                # ツールを実行
+                # ツール呼び出しの引数に状態情報を追加
+                # BaseAgentToolの実例かどうかを判断
                 if tool_name in self.tool_map:
-                    tool_response = self.tool_map[tool_name].invoke(tool_args)
+                    tool_instance = self.tool_map[tool_name]
+
+                    # BaseAgentToolの実例の場合のみshared_stateを渡す
+                    from ai_agents.base_agent_tool import BaseAgentTool
+
+                    if isinstance(tool_instance, BaseAgentTool):
+                        # downstream_command = json.dumps({
+                        #     "command": {
+                        #         "action": tool_args["command"],
+                        #         "condition": tool_args["command"]
+                        #     }
+                        # }, ensure_ascii=False, indent=2)
+                        from utils.string_utils import state_to_json
+                        tool_args["shared_state"] = state_to_json(
+                            self._create_downstream_state(shared_state=state, command=None))
+
+                    if state.get("session_id"):
+                        tool_args["session_id"] = state["session_id"]
+                    if state.get("user_id"):
+                        tool_args["user_id"] = state["user_id"]
+                    if state.get("is_entry_agent"):
+                        tool_args["is_entry_agent"] = False
+                    if state.get("user_input"):
+                        tool_args["user_input"] = state["user_input"]
+
+                    # ツールを実行
+                    tool_response = tool_instance.invoke(tool_args)
+                    if isinstance(tool_instance, BaseAgentTool):
+                        tool_response = tool_response["messages"][-1].content if tool_response[
+                            "messages"] else f"⚠️ [{tool_name}]処理が完了しました。結果なし。"  # BaseAgentToolの場合は最後のメッセージを取得
 
                     # ツールの実行結果をToolMessageとして作成
                     tool_message = ToolMessage(
@@ -259,7 +279,7 @@ class BaseAgent(ABC):
                         tool_call_id=tool_call_id
                     )
 
-                    tool_state["messages"].append(tool_message)
+                    outputs.append(tool_message)
                     print(f"✅ Tool '{tool_name}' executed successfully")
 
                 else:
@@ -268,7 +288,7 @@ class BaseAgent(ABC):
                         content=f"Error: Tool '{tool_name}' not found in available tools",
                         tool_call_id=tool_call_id
                     )
-                    tool_state["messages"].append(error_message)
+                    outputs.append(error_message)
                     print(f"❌ Tool '{tool_name}' not found in tool_map")
 
             except Exception as e:
@@ -277,10 +297,10 @@ class BaseAgent(ABC):
                     content=f"Error executing tool '{tool_name}': {str(e)}",
                     tool_call_id=tool_call_id
                 )
-                tool_state["messages"].append(error_message)
+                outputs.append(error_message)
                 print(f"❌ Tool execution error for '{tool_name}': {e}")
 
-        return tool_state
+        return {"messages": outputs}
 
     def _format_context_for_system_message(self, context: List[Dict[str, Any]]) -> str:
         """会話コンテキストをシステムメッセージ用にフォーマット"""
@@ -347,7 +367,7 @@ class BaseAgent(ABC):
         重複ツール呼び出し防止機能を含む
         """
         # 状態グラフを定義
-        state_class = self._get_state_class()
+        state_class = self.get_state_class()
         builder = StateGraph(state_class)
 
         # 基本ノードを追加
@@ -379,7 +399,7 @@ class BaseAgent(ABC):
         Returns:
             BaseAgentState: 初期状態
         """
-        state_class = self._get_state_class()
+        state_class = self.get_state_class()
         return state_class(
             messages=[HumanMessage(content=command)],
             user_input=user_input or command,  # user_inputがNoneの場合はcommandを使用
@@ -395,7 +415,7 @@ class BaseAgent(ABC):
             is_entry_agent=is_entry_agent,
         )
 
-    def _create_downstream_state(self, shared_state: BaseAgentState, command: str, user_input: str = None) -> BaseAgentState:
+    def _create_downstream_state(self, shared_state: BaseAgentState, command: str = None, user_input: str = None) -> BaseAgentState:
         """
         下流Agent用の状態を作成（上流から渡された共有状態をベース）
 
@@ -408,21 +428,30 @@ class BaseAgent(ABC):
             BaseAgentState: 下流Agent用の状態
         """
         # 共有状態をコピーして新しいメッセージを追加
-        state_class = self._get_state_class()
+        state_class = self.get_state_class()
 
         # 既存のメッセージリストに新しいメッセージを追加
         # existing_messages = shared_state.get("messages", [])
         # new_messages = existing_messages + [HumanMessage(content=command)]
-        new_messages = [HumanMessage(content=command)]
+        if command:
+            new_messages = [HumanMessage(content=command)]
 
-        # 共有状態をベースに新しい状態を作成
-        downstream_state = state_class({
-            **shared_state,  # 既存の共有状態をすべて継承
-            "messages": new_messages,  # 新しいメッセージを追加
-            "agent_type": self.agent_name,  # 現在のエージェント名に更新
-            "agent_manager_id": self.agent_manager_id,  # 現在のエージェントマネージャーIDに更新
-            "is_entry_agent": False,  # 下流Agentなのでfalse
-        })
+            # 共有状態をベースに新しい状態を作成
+            downstream_state = state_class({
+                **shared_state,  # 既存の共有状態をすべて継承
+                "messages": new_messages,  # 新しいメッセージを追加
+                "agent_type": self.agent_name,  # 現在のエージェント名に更新
+                "agent_manager_id": self.agent_manager_id,  # 現在のエージェントマネージャーIDに更新
+                "is_entry_agent": False,  # 下流Agentなのでfalse
+            })
+        else:
+            # コマンドがない場合は共有状態をそのまま使用 TODO: AgentManagerでのcommand分解処理を検討
+            downstream_state = state_class({
+                **shared_state,  # 既存の共有状態をすべて継承
+                "agent_type": self.agent_name,  # 現在のエージェント名に更新
+                "agent_manager_id": self.agent_manager_id,  # 現在のエージェントマネージャーIDに更新
+                "is_entry_agent": False,  # 下流Agentなのでfalse
+            })
 
         return downstream_state
 
@@ -565,7 +594,7 @@ class BaseAgent(ABC):
                     trace_id = self.langfuse_handler.get_current_trace_id()
 
                 # エラー時のBaseAgentState構築
-                error_state = self._get_state_class()({
+                error_state = self.get_state_class()({
                     "messages": [],
                     "user_input": user_input or command,
                     "html_content": None,
@@ -597,3 +626,79 @@ class BaseAgent(ABC):
                 return error_state
 
         return _execute_workflow()
+
+    def _generate_tool_descriptions(self) -> str:
+        """Generate dynamic tool descriptions from bound tools"""
+        if not hasattr(self, 'tools') or not self.tools:
+            return "    No tools available"
+
+        descriptions = []
+        for i, tool in enumerate(self.tools, 1):
+            # Get tool name and description
+            tool_name = getattr(tool, 'name', 'Unknown Tool')
+            tool_description = getattr(tool, 'description', 'No description available')
+
+            # Format as requested: 1. **tool_name**: description
+            descriptions.append(f"    {i}. **{tool_name}**: {tool_description}")
+
+        return "\n".join(descriptions)
+
+    def _merge_downstream_agent_capabilities(self) -> AgentCapability:
+        """
+        下流Agentの能力を一つのAgentCapabilityオブジェクトに合併
+
+        Returns:
+            AgentCapability: 合併後の能力オブジェクト
+        """
+        # ツール説明を取得
+        description = self._generate_tool_descriptions()
+
+        # 全ての下流Agentの能力情報を収集
+        all_primary_domains = []
+        all_key_functions = []
+        all_example_commands = []
+        all_collaboration_needs = []
+
+        # 全てのツールを遍歴し、そのAgentの能力を取得
+        for tool in self.tools:
+            if hasattr(tool, 'agent') and hasattr(tool.agent, 'get_agent_capability'):
+                try:
+                    capability = tool.agent.get_agent_capability()
+                    if capability:
+                        # primary_domainsを収集
+                        if hasattr(capability, 'primary_domains') and capability.primary_domains:
+                            all_primary_domains.extend(capability.primary_domains)
+
+                        # key_functionsを収集
+                        if hasattr(capability, 'key_functions') and capability.key_functions:
+                            all_key_functions.extend(capability.key_functions)
+
+                        # example_commandsを収集
+                        if hasattr(capability, 'example_commands') and capability.example_commands:
+                            all_example_commands.extend(capability.example_commands)
+
+                        # collaboration_needsを収集
+                        if hasattr(capability, 'collaboration_needs') and capability.collaboration_needs:
+                            all_collaboration_needs.extend(capability.collaboration_needs)
+
+                except Exception as e:
+                    # エラーを記録するが処理を中断しない
+                    print(f"警告: {tool.__class__.__name__}から能力取得に失敗しました: {str(e)}")
+
+        # 各フィールドを重複除去
+        unique_primary_domains = list(set(all_primary_domains))
+        unique_key_functions = list(set(all_key_functions))
+        unique_example_commands = list(set(all_example_commands))
+        unique_collaboration_needs = list(set(all_collaboration_needs))
+
+        # 合併後のAgentCapabilityを作成
+        merged_capability = AgentCapability(
+            agent_type=self.agent_name,
+            description=description,
+            primary_domains=unique_primary_domains,
+            key_functions=unique_key_functions,
+            example_commands=unique_example_commands,
+            collaboration_needs=unique_collaboration_needs
+        )
+
+        return merged_capability

@@ -1,0 +1,243 @@
+from typing import List, Any, Type, TypedDict, Optional
+
+from langchain.schema import HumanMessage
+
+from ai_agents.base_agent import BaseAgent, BaseAgentState
+from ai_agents.intelligent_agent_router import AgentCapability
+from ai_agents.product_center.tools.product_tools import (
+    UpdateStockTool,
+    UpdatePriceTool,
+    UpdateDescriptionTool,
+    UpdateCategoryTool,
+    BulkUpdateStockTool,
+    BulkUpdatePriceTool,
+    search_products_tool
+)
+
+
+# 商品詳細情報管理エージェント専用状態定義
+class ProductDetailAgentState(BaseAgentState):
+    """商品詳細情報管理エージェント固有の状態を拡張"""
+    jancodes: Optional[List[str]]  # 処理対象商品Jancodeリスト
+    operation_type: Optional[str]     # 操作タイプ（stock, price, category, description等）
+    bulk_operation: Optional[bool]    # 一括操作フラグ
+
+class ProductDetailAgent(BaseAgent):
+    """
+    商品詳細情報管理専門エージェント
+    BaseAgentを継承してECバックオフィス商品詳細情報管理機能を提供
+    """
+
+    def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
+        """商品詳細情報管理エージェント初期化"""
+        super().__init__(
+            api_key=api_key, 
+            llm_type=llm_type, 
+            use_langfuse=use_langfuse,
+            agent_name="ProductDetailAgent"
+        )
+
+    def _initialize_tools(self) -> List[Any]:
+        """商品詳細情報管理固有のツールを初期化"""
+        return [
+            search_products_tool,
+            UpdateStockTool(),
+            UpdatePriceTool(),
+            UpdateDescriptionTool(),
+            UpdateCategoryTool(),
+            BulkUpdateStockTool(),
+            BulkUpdatePriceTool(),
+        ]
+
+    def _get_system_message_content(self, is_entry_agent: bool = False) -> str:
+        """商品詳細情報管理エージェントのシステムメッセージを取得（動的生成）"""
+        if is_entry_agent:
+            # エントリーエージェントの場合：人間向けの自然言語レスポンス
+            return f"""
+You are a specialized EC back-office product detail management assistant. You understand natural language commands from administrators and provide comprehensive product detail management functionality while maximizing conversation history utilization.
+
+## Your Purpose
+    Process user requests directly and provide human-friendly responses with actionable next steps.
+
+## Available tools
+{self._generate_tool_descriptions}
+
+## Response Format
+    - Structured JSON response
+    - Include "html_content" field for direct screen rendering when needed
+    - Include "error" field for error messages in Japanese
+    - Include "next_actions" field for suggested next steps (considering conversation history)
+
+## Conversation History Usage
+    - **Continuity**: Remember previous operations and search results for informed decision-making
+    - **Context understanding**: Interpret ambiguous expressions like "that product", "previous results", "last search"
+    - **Progress tracking**: Understand multi-step workflows from history and suggest next steps
+    - **Error correction**: Reference past errors to provide better solutions
+    - **Information reuse**: Leverage previously displayed product information and settings
+
+Always respond in friendly, clear Japanese while maximizing conversation history utilization to prioritize administrator workflow efficiency.
+"""
+        else:
+            # 非エントリーエージェントの場合：上流Agent向けの構造化レスポンス
+            return f"""
+You are a specialized product detail management agent in a multi-layer agent system. You process structured commands from upstream agents and return structured data for further processing.
+
+## Your Purpose
+    Execute product detail management operations based on structured commands from upstream agents and return structured results.
+
+## Available tools
+{self._generate_tool_descriptions}
+
+## Response Format
+    - Structured JSON response optimized for upstream agent consumption
+    - Include "html_content" field when HTML generation is requested (return raw HTML without parsing)
+    - Focus on data accuracy and structured output for agent-to-agent communication
+
+## Error Handling
+    - Return structured error information in "error" field
+    - Provide actionable error details for upstream agent processing
+    - Maintain operation continuity when possible
+
+Execute operations efficiently and return structured results optimized for multi-agent workflow processing.
+"""
+
+    def _get_workflow_name(self) -> str:
+        """ワークフロー名を取得"""
+        return "product_detail_workflow"
+
+    def get_agent_capability(self) -> AgentCapability:
+        """商品詳細情報管理エージェントの能力定義を取得"""
+        return AgentCapability(
+            agent_type="product_detail",
+            description="Specialized agent for managing detailed product information in the EC (e-commerce) back office. Responsible for tasks such as product search, name configuration, inventory management, price setting, and editing product descriptions.",
+            primary_domains=[
+                "Product Details", "Inventory", "Pricing", "Product Names", "Product Descriptions",
+                "Product Search", "Product Categories"
+            ],
+            key_functions=[
+                "Search and filter products",
+                "Update inventory quantity (single or bulk)",
+                "Set or update product pricing (single or bulk)",
+                "Edit and update product descriptions",
+                "Edit and update product names",
+                "Set or modify product categories",
+                "Handle errors during product-related operations"
+            ],
+            example_commands=[
+                "JAN123456789の在庫を50に変更して",
+                "コーヒー商品の価格を一括で1500円に設定",
+                "飲料カテゴリーの商品一覧を表示",
+                "商品説明に「限定」を含む商品を検索",
+                "価格が1000円以下の商品を価格順で表示"
+            ],
+            collaboration_needs=[
+                "Order Management Agent: When checking the order status of products",
+                "Customer Service Agent: When responding to order-related inquiries",
+                "Customer Service Agent: When handling product-related inquiries",
+                "Inventory Analysis Agent: When in-depth inventory analysis is required"
+            ]
+        )
+
+    def get_state_class(self) -> Type[TypedDict]:
+        """商品詳細情報管理エージェント専用状態クラスを使用"""
+        return ProductDetailAgentState
+
+    def _create_initial_state(self, command: str, user_input: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False)  -> ProductDetailAgentState:
+        """商品詳細情報管理エージェント専用の初期状態を作成"""
+        return ProductDetailAgentState(
+            messages=[HumanMessage(content=command)],
+            user_input=user_input or command, # ユーザー入力がない場合はコマンドを使用
+            html_content=None,
+            error_message=None,
+            next_actions=None,
+            session_id=session_id,
+            user_id=user_id,
+            agent_type=self.agent_name,
+            agent_manager_id=self.agent_manager_id,
+            conversation_context=None,
+            trace_id=None,
+            conversation_id=None,
+            is_entry_agent=is_entry_agent,
+            jancodes=None,
+            operation_type=None,
+            bulk_operation=False,
+        )
+
+# 商品管理コマンド例
+EXAMPLE_COMMANDS = [
+    # 直接実行タイプ
+    "JAN123456789の在庫を50に変更",
+    "商品987654321のカテゴリーを飲料に変更",
+    "JAN123456789の価格を1500円に設定",
+    "商品987654321の商品説明を更新",
+
+    # 検索後実行タイプ
+    "すべてのコーヒー商品の在庫を100に変更",
+    "在庫不足の商品をすべて棚下げ",
+    "飲料カテゴリーの商品をすべて棚上げ",
+    "価格が1000円以下の商品を検索",
+    "説明文に「限定」を含む商品を検索",
+
+    # 検証後実行タイプ
+    "商品ABC123を棚上げ",
+    "JAN555666777を販売開始",
+
+    # フォームが必要なタイプ
+    "商品在庫を修正",
+    "商品情報を更新",
+    "商品管理",
+    "商品価格を設定",
+    "商品説明を編集"
+]
+
+# 使用例
+if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    # # 商品管理エージェントの単体使用
+    # agent = ProductDetailAgent(api_key,llm_type="ollama_qwen3", use_langfuse=True)
+    #
+    # # エージェント能力情報を表示
+    # capability = agent.get_agent_capability()
+    # print("エージェント能力:", capability)
+    #
+    # # テスト実行
+    # result = agent.process_command(
+    #     "Jancode 1000000000001の商品を検索してください",
+    #     llm_type="ollama_qwen3",
+    #     session_id="session_1751867378920_795rpr9um",
+    #     user_id="default_user",
+    #     is_entry_agent=True,
+    # )
+    # print(result)
+
+    from httpx import AsyncClient
+    import asyncio
+    async def single_agent_chat_product_search():
+        """测试商品搜索功能"""
+        request_data = {
+            "message": "Jancode 1000000000001の商品を検索してください",
+            "session_id": "test_session_search_001",
+            "user_id": "test_user_search",
+            "llm_type": "ollama_qwen3"
+        }
+
+        async with AsyncClient() as client:
+            response = await client.post(
+                f"http://localhost:5004/api/agent/single-agent/chat",
+                json=request_data,
+                headers={"Content-Type": "application/json"},
+                timeout=600  # 设置超时时间为30秒
+            )
+
+            # assert response.status_code == 200
+            response_data = response.json()
+
+            print(response_data)
+
+    asyncio.run(single_agent_chat_product_search())

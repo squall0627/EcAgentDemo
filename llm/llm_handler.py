@@ -144,6 +144,8 @@ class LLMHandler:
     
     def get_llm_with_tools(self, tools):
         """ツール付きLLMを取得"""
+        # TODO : Ollamaはstrictとparallel_tool_callsをサポートしていない
+        # return self.llm.bind_tools(tools, strict=True, parallel_tool_calls=False)
         return self.llm.bind_tools(tools)
     
     def get_current_llm_type(self):

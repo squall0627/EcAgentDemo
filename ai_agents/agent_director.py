@@ -35,15 +35,17 @@ class AgentDirector(BaseAgent):
             use_langfuse=use_langfuse,
             agent_name="AgentDirector"
         )
-        # SortedTaskExtractorAndRouterNodeを初期化（Combined Step 1 & 2: 構造化意図抽出・ルーティング・ソート）
-        self.sorted_task_extractor_router = SortedTaskExtractorAndRouterNode(self.llm_handler, self.langfuse_handler)
-        # TaskGrouperを初期化（Step 3: タスクグループ化）
-        self.task_grouper = TaskGrouper()
 
         # 下流AgentManagerを事前登録
         self.registered_agent_managers = {
-            "product_center_agent_manager": ProductCenterAgentManager
+            "ProductCenterAgentManager": ProductCenterAgentManager
         }
+
+        # SortedTaskExtractorAndRouterNodeを初期化（Combined Step 1 & 2: 構造化意図抽出・ルーティング・ソート）
+        self.sorted_task_extractor_router = SortedTaskExtractorAndRouterNode(self.llm_handler, self.langfuse_handler,
+                                                                             registered_managers=self.registered_agent_managers)
+        # TaskGrouperを初期化（Step 3: タスクグループ化）
+        self.task_grouper = TaskGrouper()
 
         # TaskDistributorを初期化（Step 4: タスク配信）
         self.task_distributor = TaskDistributor(
@@ -56,7 +58,7 @@ class AgentDirector(BaseAgent):
         # AgentDirectorは直接ツールを使用せず、TaskPlannerと下流Agentに委譲
         return []
 
-    def _get_state_class(self):
+    def get_state_class(self):
         """AgentDirector専用の状態クラスを返す"""
         return AgentDirectorState
 
@@ -309,7 +311,7 @@ class AgentDirector(BaseAgent):
         SortedTaskExtractorAndRouter -> TaskGrouper -> TaskDistributor -> Assistant -> Tools -> Assistant のフローを実装
         """
         # 状態グラフを定義
-        state_class = self._get_state_class()
+        state_class = self.get_state_class()
         builder = StateGraph(state_class)
 
         # ノードを追加
@@ -408,3 +410,22 @@ Always respond in friendly, clear Japanese while executing tasks efficiently and
             ],
             collaboration_needs=[]
         )
+
+if __name__ == "__main__":
+    # AgentDirectorのインスタンスを作成
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    director = AgentDirector(api_key=api_key, llm_type="ollama_qwen3")
+
+    response = director.process_command(
+        "Jancode 1000000000001の商品を検索してください",
+        llm_type="ollama_qwen3",
+        session_id="session_1751867378920_795rpr9um",
+        user_id="default_user",
+        is_entry_agent=True,
+    )

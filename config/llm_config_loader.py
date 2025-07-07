@@ -40,10 +40,10 @@ class LLMConfigLoader:
         return {
             "llm_models": [
                 {
-                    "value": "ollama_qwen",
-                    "label": "🦙 Ollama - Qwen2.5 Coder 32B",
+                    "value": "ollama_qwen3",
+                    "label": "🦙 Ollama - Qwen3 30B",
                     "provider": "ollama",
-                    "model": "qwen2.5-coder:32b",
+                    "model": "qwen3:30b",
                     "base_url": "http://localhost:11434",
                     "temperature": 0.7,
                     "color": "ollama",
@@ -55,7 +55,7 @@ class LLMConfigLoader:
                 "ollama": {
                     "requires_api_key": False,
                     "default_base_url": "http://localhost:11434",
-                    "fallback_model": "qwen2.5-coder:32b"
+                    "fallback_model": "qwen3:30b"
                 }
             }
         }

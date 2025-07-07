@@ -22,7 +22,7 @@ class ConversationService:
         context_data: Optional[Dict[str, Any]] = None,
         html_content: Optional[str] = None,
         error_info: Optional[str] = None,
-        next_actions: Optional[str] = None,
+        next_actions: Optional[List[str]] = None,
         is_collaboration: bool = False,
         collaboration_agents: Optional[List[Dict[str, Any]]] = None,
         routing_decision: Optional[Dict[str, Any]] = None

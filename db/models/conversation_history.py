@@ -24,7 +24,7 @@ class ConversationHistory(Base):
     context_data = Column(JSON, nullable=True)  # コンテキストデータ（JSON形式）
     html_content = Column(Text, nullable=True)  # 生成されたHTML内容
     error_info = Column(Text, nullable=True)  # エラー情報
-    next_actions = Column(Text, nullable=True)  # 次のアクション提案
+    next_actions = Column(JSON, nullable=True)  # 次のアクション提案
     
     # 協作情報
     is_collaboration = Column(Boolean, default=False)  # 協作モードフラグ

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from ai_agents.product_center.product_management_agent import ProductManagementAgent, EXAMPLE_COMMANDS
+
+from ai_agents.product_center.product_center_agent_manager import ProductCenterAgentManager
+from ai_agents.product_center.product_detail_agent import ProductDetailAgent, EXAMPLE_COMMANDS
 from typing import Optional, List, Dict, Any
 import os
 import json
@@ -34,7 +36,7 @@ def get_single_agent(llm_type: str = None):
         api_key = os.getenv("OPENAI_API_KEY")
 
         # 新しいエージェントインスタンスを作成
-        single_agent_instance = ProductManagementAgent(api_key, llm_type=llm_type)
+        single_agent_instance = ProductDetailAgent(api_key, llm_type=llm_type)
         print(f"🔄 単一エージェントを{llm_type}で初期化しました")
 
     return single_agent_instance
@@ -55,15 +57,14 @@ def get_multi_agent_manager(llm_type: str = None):
         llm_type = llm_config.get_default_model()
 
     # マネージャーが存在しない場合は作成
-    if multi_agent_manager_instance is None:
+    if multi_agent_manager_instance is None or multi_agent_manager_instance.llm_type != llm_type:
         api_key = os.getenv("OPENAI_API_KEY")
 
         # 新しいマネージャーインスタンスを作成
-        # multi_agent_manager_instance = ProductCenterMultiAgentManager(
-        #     api_key=api_key,
-        #     llm_type=llm_type
-        # )
-        # TODO
+        multi_agent_manager_instance = ProductCenterAgentManager(
+            api_key=api_key,
+            llm_type=llm_type
+        )
         print(f"🔄 マルチエージェントマネージャーを{llm_type}で初期化しました")
 
     return multi_agent_manager_instance
@@ -115,7 +116,7 @@ class ChatResponse(BaseModel):
     workflow_step: Optional[str] = None
     llm_type_used: Optional[str] = None
     agent_type: Optional[str] = None
-    next_actions: Optional[str] = None
+    next_actions: Optional[str | list[str]] = None
     trace_id: Optional[str] = None  # 評価用のLangfuse trace ID
     conversation_id: Optional[int] = None  # base_agentから取得した会話ID
     error_message: Optional[str] = None
@@ -188,30 +189,23 @@ async def get_single_agent_info(llm_type: Optional[str] = Query(None)):
 async def multi_agent_chat(request: MultiAgentChatRequest):
     """インテリジェントマルチエージェントとの対話"""
     try:
-        # マルチエージェントマネージャーを取得
-        manager = get_multi_agent_manager(request.llm_type)
+        # リクエストからllm_typeを取得
+        llm_type = getattr(request, 'llm_type', 'ollama')
 
-        # 協作モードの判定
-        if request.enable_collaboration:
-            response = manager.process_collaborative_command(
-                command=request.message,
-                context=request.context,
-                llm_type=request.llm_type,
-                session_id=request.session_id,
-                user_id=request.user_id
-            )
-        else:
-            response = manager.process_command(
-                command=request.message,
-                agent_type=request.agent_type,
-                context=request.context,
-                llm_type=request.llm_type,
-                session_id=request.session_id,
-                user_id=request.user_id
-            )
+        # 単一エージェントを取得
+        agent = get_multi_agent_manager(llm_type)
 
-        # マルチエージェントレスポンス解析
-        return _parse_multi_agent_response(response, request)
+        # コマンドを処理
+        response = agent.process_command(
+            request.message,
+            llm_type=llm_type,
+            session_id=request.session_id,
+            user_id=request.user_id,
+            is_entry_agent=True,
+        )
+
+        # レスポンス解析と構築
+        return _parse_agent_response(response, request)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"マルチエージェント処理に失敗しました: {str(e)}")

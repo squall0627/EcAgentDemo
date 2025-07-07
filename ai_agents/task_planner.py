@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 import json
+
 from llm.llm_handler import LLMHandler
 from langchain.schema import HumanMessage, SystemMessage
 
@@ -15,7 +16,7 @@ class SortedTaskExtractorAndRouterNode:
     Step 1: Extract structured intent, route to agents, and sort by priority
     """
 
-    def __init__(self, llm_handler: LLMHandler, langfuse_handler: LangfuseHandler):
+    def __init__(self, llm_handler: LLMHandler, langfuse_handler: LangfuseHandler, registered_managers: Dict[str, Any] = None):
         """
         SortedTaskExtractorAndRouterNode初期化
 
@@ -25,10 +26,11 @@ class SortedTaskExtractorAndRouterNode:
         """
         self.llm_handler = llm_handler
         self.langfuse_handler = langfuse_handler
+        self.registered_managers = registered_managers
 
     def _get_combined_prompt(self) -> str:
         """統合タスク抽出・ルーティング・ソート用のプロンプトを取得"""
-        return """
+        return f"""
 You are a high-performance task decomposition, routing, and prioritization system for an e-commerce management system.
 
 # Input: User's natural language request
@@ -55,7 +57,7 @@ You are a high-performance task decomposition, routing, and prioritization syste
 ]
 
 ## Available Target Agents:
-- product_center_agent_manager: Handles all product-related operations
+{self._generate_downstream_agents_descriptions()}
 
 ## Priority Assignment Rules:
 1. **Dependency-based Priority**: If one task depends on another, assign higher priority to the prerequisite
@@ -70,7 +72,7 @@ Input: "在庫がない商品を棚下げして、価格が5000円以上のも�
 Output:
 [
   {
-    "target_agent": "product_center_agent_manager",
+    "target_agent": "ProductCenterAgentManager",
     "command": {
       "action": "deactivate_product",
       "condition": "在庫なし"
@@ -78,7 +80,7 @@ Output:
     "priority": 1
   },
   {
-    "target_agent": "product_center_agent_manager",
+    "target_agent": "ProductCenterAgentManager",
     "command": {
       "action": "discount_product",
       "condition": "価格 > 5000"
@@ -91,7 +93,7 @@ Input: "Search for coffee products and update their inventory"
 Output:
 [
   {
-    "target_agent": "product_center_agent_manager",
+    "target_agent": "ProductCenterAgentManager",
     "command": {
       "action": "search_product",
       "condition": "product_name contains 'coffee'"
@@ -99,7 +101,7 @@ Output:
     "priority": 1
   },
   {
-    "target_agent": "product_center_agent_manager",
+    "target_agent": "ProductCenterAgentManager",
     "command": {
       "action": "update_inventory",
       "condition": "product_name contains 'coffee'"
@@ -207,7 +209,7 @@ Now extract, route, and prioritize tasks from the following user input:
         # TODO
         return [
             {
-                "target_agent": "product_center_agent_manager",
+                "target_agent": "ProductCenterAgentManager",
                 "command": {
                     "action": "search_product",
                     "condition": f"user_request: {user_input}"
@@ -215,6 +217,14 @@ Now extract, route, and prioritize tasks from the following user input:
                 "priority": 1
             }
         ]
+
+    def _generate_downstream_agents_descriptions(self) -> str:
+        """Generate descriptions of downstream agents"""
+        descriptions = []
+        for agent in self.registered_managers:
+            descriptions.append(
+                f"- {agent.agent_name}: {agent.get_agent_capability().format_for_llm_tool_description()}")
+        return "\n".join(descriptions)
 
 class TaskGrouper:
     """
@@ -573,76 +583,76 @@ class TaskDistributor:
         return command_text
 
 
-class TaskPlanner:
-    """
-    タスクプランナー - 多層Agent系統のタスク計画を管理
-    新アーキテクチャ: SortedTaskExtractorAndRouterNode + TaskGrouper + TaskDistributor
-    Combined Step 1&2: 構造化意図抽出・ルーティング・ソート
-    Step 3: タスクグループ化
-    Step 4: タスク配信
-    """
-
-    def __init__(self, llm_handler: LLMHandler, langfuse_handler: LangfuseHandler = None):
-        """
-        TaskPlanner初期化
-
-        Args:
-            llm_handler: LLMHandlerインスタンス
-            langfuse_handler: LangfuseHandlerインスタンス（オプション）
-        """
-        # 新アーキテクチャ: 統合ノード使用
-        self.sorted_task_extractor_router = SortedTaskExtractorAndRouterNode(llm_handler, langfuse_handler)
-        self.task_grouper = TaskGrouper()
-
-    def plan_tasks(self, user_input: str) -> Dict[str, Any]:
-        """
-        ユーザー入力からタスク計画を作成
-        最適化ワークフロー: Combined Step 1&2 + Step 3
-        従来ワークフロー: Step 1 + Step 2 + Step 3
-
-        Args:
-            user_input: ユーザーの自然言語入力
-
-        Returns:
-            タスク計画結果
-        """
-        print(f"🧠 TaskPlanner: ユーザー入力を分析中...")
-        print(f"入力: {user_input}")
-
-        return self._plan_tasks_optimized(user_input)
-
-    def _plan_tasks_optimized(self, user_input: str, session_id: str = None, user_id: str = None) -> Dict[str, Any]:
-        """
-        最適化ワークフロー: SortedTaskExtractorAndRouterNode + TaskGrouper
-        LLM呼び出し回数を削減し、トークン効率を向上
-        """
-        # Combined Step 1&2: 構造化意図抽出・ルーティング・ソート
-        sorted_routed_tasks = self.sorted_task_extractor_router.extract_route_and_sort_tasks(user_input, session_id, user_id)
-
-        print(f"✅ 統合タスク処理完了: {len(sorted_routed_tasks)}個のタスクを抽出・ルーティング・ソート")
-        for i, task in enumerate(sorted_routed_tasks, 1):
-            priority = task.get("priority", "N/A")
-            action = task.get("command", {}).get("action", "N/A")
-            condition = task.get("command", {}).get("condition", "N/A")
-            agent = task.get("target_agent", "N/A")
-            print(f"  タスク{i}: 優先度{priority} - {action} ({condition}) -> {agent}")
-
-        # Step 3: タスクグループ化（優先順位ソート済み）
-        grouped_tasks = self.task_grouper.group_tasks(sorted_routed_tasks)
-
-        print(f"✅ タスクグループ化完了: {len(grouped_tasks)}個のエージェントグループを作成")
-
-        # 最適化ワークフローの結果を返す
-        return {
-            "step": "1&2_combined+3",
-            "description": "構造化意図抽出・ルーティング・ソート・グループ化完了（最適化版）",
-            "sorted_routed_tasks": sorted_routed_tasks,  # Combined Step 1&2の結果
-            "grouped_tasks": grouped_tasks,  # Step 3の結果
-            "original_input": user_input,
-            "workflow_type": "optimized",
-            "llm_calls_saved": 1,  # 従来の2回から1回に削減
-            "next_steps": [
-                "Step 4: タスク排序（実行計画の優先順位付け）",
-                "Step 5: 下流AgentManagerへの逐次配信"
-            ]
-        }
+# class TaskPlanner:
+#     """
+#     タスクプランナー - 多層Agent系統のタスク計画を管理
+#     新アーキテクチャ: SortedTaskExtractorAndRouterNode + TaskGrouper + TaskDistributor
+#     Combined Step 1&2: 構造化意図抽出・ルーティング・ソート
+#     Step 3: タスクグループ化
+#     Step 4: タスク配信
+#     """
+#
+#     def __init__(self, llm_handler: LLMHandler, langfuse_handler: LangfuseHandler = None):
+#         """
+#         TaskPlanner初期化
+#
+#         Args:
+#             llm_handler: LLMHandlerインスタンス
+#             langfuse_handler: LangfuseHandlerインスタンス（オプション）
+#         """
+#         # 新アーキテクチャ: 統合ノード使用
+#         self.sorted_task_extractor_router = SortedTaskExtractorAndRouterNode(llm_handler, langfuse_handler)
+#         self.task_grouper = TaskGrouper()
+#
+#     def plan_tasks(self, user_input: str) -> Dict[str, Any]:
+#         """
+#         ユーザー入力からタスク計画を作成
+#         最適化ワークフロー: Combined Step 1&2 + Step 3
+#         従来ワークフロー: Step 1 + Step 2 + Step 3
+#
+#         Args:
+#             user_input: ユーザーの自然言語入力
+#
+#         Returns:
+#             タスク計画結果
+#         """
+#         print(f"🧠 TaskPlanner: ユーザー入力を分析中...")
+#         print(f"入力: {user_input}")
+#
+#         return self._plan_tasks_optimized(user_input)
+#
+#     def _plan_tasks_optimized(self, user_input: str, session_id: str = None, user_id: str = None) -> Dict[str, Any]:
+#         """
+#         最適化ワークフロー: SortedTaskExtractorAndRouterNode + TaskGrouper
+#         LLM呼び出し回数を削減し、トークン効率を向上
+#         """
+#         # Combined Step 1&2: 構造化意図抽出・ルーティング・ソート
+#         sorted_routed_tasks = self.sorted_task_extractor_router.extract_route_and_sort_tasks(user_input, session_id, user_id)
+#
+#         print(f"✅ 統合タスク処理完了: {len(sorted_routed_tasks)}個のタスクを抽出・ルーティング・ソート")
+#         for i, task in enumerate(sorted_routed_tasks, 1):
+#             priority = task.get("priority", "N/A")
+#             action = task.get("command", {}).get("action", "N/A")
+#             condition = task.get("command", {}).get("condition", "N/A")
+#             agent = task.get("target_agent", "N/A")
+#             print(f"  タスク{i}: 優先度{priority} - {action} ({condition}) -> {agent}")
+#
+#         # Step 3: タスクグループ化（優先順位ソート済み）
+#         grouped_tasks = self.task_grouper.group_tasks(sorted_routed_tasks)
+#
+#         print(f"✅ タスクグループ化完了: {len(grouped_tasks)}個のエージェントグループを作成")
+#
+#         # 最適化ワークフローの結果を返す
+#         return {
+#             "step": "1&2_combined+3",
+#             "description": "構造化意図抽出・ルーティング・ソート・グループ化完了（最適化版）",
+#             "sorted_routed_tasks": sorted_routed_tasks,  # Combined Step 1&2の結果
+#             "grouped_tasks": grouped_tasks,  # Step 3の結果
+#             "original_input": user_input,
+#             "workflow_type": "optimized",
+#             "llm_calls_saved": 1,  # 従来の2回から1回に削減
+#             "next_steps": [
+#                 "Step 4: タスク排序（実行計画の優先順位付け）",
+#                 "Step 5: 下流AgentManagerへの逐次配信"
+#             ]
+#         }

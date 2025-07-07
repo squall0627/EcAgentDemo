@@ -1,6 +1,7 @@
-from ai_agents.base_agent import BaseAgent, BaseAgentState
+from ai_agents.base_agent import BaseAgent
 from ai_agents.intelligent_agent_router import AgentCapability
-from ai_agents.product_center.product_management_agent import ProductManagementAgent
+from ai_agents.product_center.tools.product_detail_agent_tool import ProductDetailAgentTool
+from ai_agents.product_center.tools.product_publish_agent_tool import ProductPublishAgentTool
 
 
 class ProductCenterAgentManager(BaseAgent):
@@ -20,72 +21,75 @@ class ProductCenterAgentManager(BaseAgent):
 
     def _initialize_tools(self):
         """ProductCenterAgentManager用ツールを初期化"""
-        return []
+        return [ProductDetailAgentTool(api_key=self.api_key,
+                                       llm_type=self.llm_type,
+                                       use_langfuse=self.langfuse_handler.use_langfuse),
+                ProductPublishAgentTool(api_key=self.api_key,
+                                        llm_type=self.llm_type,
+                                        use_langfuse=self.langfuse_handler.use_langfuse)]
 
     def _get_system_message_content(self, is_entry_agent: bool = False) -> str:
-        """ProductCenterAgentManager用システムメッセージ"""
-        return """
-あなたは多層Agent系統の中間管理者であり、商品センター領域を統括する専門AgentManagerです。
+        """ProductCenterAgentManager system message content (dynamic generation)"""
 
-## 目的：
-    ユーザーの入力を正確に理解し、最適な下流AgentToolを選択し、commandを正確に転送し、そして実行する。
+        if is_entry_agent:
+            # Entry agent case: Human-friendly natural language response
+            return f"""
+You are a specialized EC back-office product center management coordinator. You understand natural language commands from administrators and coordinate comprehensive product management functionality across multiple specialized agents while maximizing conversation history utilization.
 
-## あなたの責任
-    1. ユーザーの意図を明確に把握し、自分が管理しているAgentToolの能力と照らし合わせて、詳細な実行計画を立てる
-    2. 実行計画の各ステップに対して、最適なAgentToolを選定する
-    3. ユーザーの意図に基づき、各実行ステップに最適なsub_commandを作成する。
-    4. 隣接する複数の実行ステップで同じ下流AgentToolを使用する場合は、それらのステップを統合し、sub_commandをマージする。
-    5. sub_commandとユーザーのオリジナル入力内容を含めた構造化された「command」オブジェクトを生成し、下流Agentに渡す
-    6. 各Agentの応答結果をまとめ、ユーザーが理解しやすい形で返答する
+## Your Purpose
+    Process user requests directly, coordinate with downstream agents, and provide human-friendly responses with actionable next steps.
 
-## 利用可能なAgentTool
-    - **product_management_agent**：商品検索、在庫確認、価格変更、棚上げ・棚下げなどの操作に対応
+## Available Agent Tools
+{self._generate_tool_descriptions()}
 
-## 入力と出力
-    - ユーザー入力：自由形式の自然言語
-    - 上流Agentから渡されたcommandの入力形式：
-    ```json文字列
+## Response Format
+    - Structured JSON response
+    - Include "html_content" field for direct screen rendering when needed
+    - Include "error" field for error messages in Japanese
+    - Include "next_actions" field for suggested next steps (considering conversation history)
+
+## Conversation History Usage
+    - **Continuity**: Remember previous operations and search results for informed decision-making
+    - **Context understanding**: Interpret ambiguous expressions like "that product", "previous results", "last search"
+    - **Progress tracking**: Understand multi-step workflows from history and suggest next steps
+    - **Error correction**: Reference past errors to provide better solutions
+    - **Information reuse**: Leverage previously displayed product information and settings
+
+Always respond in friendly, clear Japanese while **maximizing conversation history utilization** to prioritize administrator workflow efficiency.
+"""
+        else:
+            # Non-entry agent case: Structured response for upstream agents
+            return f"""
+You are a specialized product center management coordinator in a multi-layer agent system. You process structured commands from upstream agents, coordinate with downstream specialized agents, and return structured data for further processing.
+
+## Your Purpose
+    Execute product center management operations by coordinating downstream agents based on structured commands from upstream agents and return structured results.
+
+## Input Format
+    Commands from upstream agents in the following format:
+    ```json
     {
-      "command": {
-        "action": 上流Agentが抽出したsub_command,
-        "user_input": ユーザーのオリジナル入力内容
+        "command": {
+            "action": "extracted_sub_command_from_upstream_agent",
+            "condition": "condition_description"
       }
     }
-    - 下流Agentに渡すcommandの出力形式：
-    ```json文字列
-    {
-      "command": {
-        "action": あなたが抽出したsub_command,
-        "user_input": ユーザーのオリジナル入力内容
-      }
-    }
+    ```
 
-## 応答形式：
-    - JSON形式で構造化された応答
-    - HTML生成が必要な場合は "html_content" フィールドに含め、直接に画面にレンダリング
-    - エラーメッセージは "error" フィールドに日本語で記載
-    - 次のアクション提案は "next_actions" フィールドに含める（履歴を考慮した提案）
+## Available Agent Tools
+{self._generate_tool_descriptions()}
 
-## **注意事項**
-    •	commandはできるだけ人間の自然言語に近づけて、日本語で作成してください。
-    •	各下流Agentの実行結果を分析・記録し、同じタスクが重複して実行されないようにしてください。
+## Response Format
+    - Structured JSON response optimized for upstream agent consumption
+    - Include "html_content" field when HTML generation is requested (return raw HTML without parsing)
+    - Focus on data accuracy and structured output for agent-to-agent communication
 
-## 重要な動作原則：
-    1. **会話履歴を常に参照**: ユーザーの発言が曖昧でも、履歴から文脈を読み取って適切に対応
-    2. **段階的サポート**: ユーザーが問題解決まで段階的にサポート（履歴のエラーパターンを活用）
+## Error Handling
+    - Return structured error information in "error" field
+    - Provide actionable error details for upstream agent processing
+    - Maintain operation continuity when possible
 
-## 会話履歴の活用方法：
-    - **継続性の維持**: 前回の操作や検索結果を覚えており、それを基に次の行動を決定
-    - **進捗管理**: 複数ステップの作業を履歴から把握し、次のステップを提案
-    - **エラー修正**: 過去のエラーや問題を参考に、より適切な解決策を提案
-    - **関連情報活用**: 以前に表示した商品情報や設定内容など関連情報を再利用
-
-## 履歴参照時の応答例：
-    - 「前回検索した『コーヒー』の商品3件のうち、商品ID 123 の価格設定を行います」
-    - 「先ほどエラーが発生した商品ID 456 のカテゴリー未設定問題を解決するため、カテゴリー設定画面を表示します」
-    - 「前回の一括棚上げ処理で残った未完了商品2件について、条件を確認してから処理を進めます」
-
-常に親しみやすく明確な日本語で応答し、**会話履歴を最大限活用**して管理者の業務効率向上を最優先に考えてください。
+Execute operations efficiently through coordinated agent management and return structured results optimized for multi-agent workflow processing.
 """
 
     def _get_workflow_name(self) -> str:
@@ -94,47 +98,54 @@ class ProductCenterAgentManager(BaseAgent):
 
     def get_agent_capability(self) -> AgentCapability:
         """ProductCenterAgentManager能力定義を取得"""
-        return AgentCapability(
-            agent_type="ProductCenterAgentManager",
-            description="商品センター管理専門Manager - 商品検索、在庫管理、価格設定、棚上げ・棚下げ等を統括",
-            primary_domains=["商品管理", "在庫管理", "価格管理"],
-            key_functions=[
-                "商品検索・フィルタリング",
-                "商品在庫管理",
-                "商品価格管理",
-                "商品棚上げ・棚下げ管理",
-                "商品説明・カテゴリー管理",
-                "商品データ一括更新"
-            ],
-            example_commands=[
-                "商品を検索してください",
-                "在庫を更新してください",
-                "価格を変更してください",
-                "商品を棚上げしてください",
-                "カテゴリーを設定してください"
-            ],
-            collaboration_needs=[]
-        )
+        return self._merge_downstream_agent_capabilities()
 
-    def process_command(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False, shared_state: BaseAgentState = None) -> BaseAgentState:
-        """
-        商品センター管理コマンドを処理（多層Agent間状態互通対応）
+    # def process_command(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False, shared_state: BaseAgentState = None) -> BaseAgentState:
+    #     """
+    #     商品センター管理コマンドを処理（多層Agent間状態互通対応）
+    #
+    #     Args:
+    #         command: ユーザーコマンド
+    #         user_input: ユーザーのオリジナル入力内容
+    #         llm_type: LLMタイプ
+    #         session_id: セッションID
+    #         user_id: ユーザーID
+    #         is_entry_agent: エントリーエージェントかどうか
+    #         shared_state: 上流Agentから渡された共有状態（下流Agentの場合に使用）
+    #
+    #     Returns:
+    #         BaseAgentState: エージェント実行結果の状態オブジェクト（多層Agent間での状態共有用）
+    #     """
+    #     # ProductManagementAgentに処理を委譲
+    #     return ProductDetailAgent(
+    #             api_key=self.api_key,
+    #             llm_type=llm_type or self.llm_type,
+    #             use_langfuse=True
+    #         ).process_command(command, user_input, session_id=session_id, user_id=user_id, is_entry_agent=is_entry_agent, shared_state=shared_state)
 
-        Args:
-            command: ユーザーコマンド
-            user_input: ユーザーのオリジナル入力内容
-            llm_type: LLMタイプ
-            session_id: セッションID
-            user_id: ユーザーID
-            is_entry_agent: エントリーエージェントかどうか
-            shared_state: 上流Agentから渡された共有状態（下流Agentの場合に使用）
+if __name__ == "__main__":
+    from httpx import AsyncClient
+    import asyncio
+    async def mulit_agent_chat_product_search():
+        """测试商品搜索功能"""
+        request_data = {
+            "message": "Jancode 1000000000001の商品を検索してください",
+            "session_id": "test_session_search_001",
+            "user_id": "test_user_search",
+            "llm_type": "ollama_qwen3"
+        }
 
-        Returns:
-            BaseAgentState: エージェント実行結果の状態オブジェクト（多層Agent間での状態共有用）
-        """
-        # ProductManagementAgentに処理を委譲
-        return ProductManagementAgent(
-                api_key=self.api_key,
-                llm_type=llm_type or self.llm_type,
-                use_langfuse=True
-            ).process_command(command, user_input, session_id=session_id, user_id=user_id, is_entry_agent=is_entry_agent, shared_state=shared_state)
+        async with AsyncClient() as client:
+            response = await client.post(
+                f"http://localhost:5004/api/agent/multi-agent/chat",
+                json=request_data,
+                headers={"Content-Type": "application/json"},
+                timeout=600  # 设置超时时间为30秒
+            )
+
+            # assert response.status_code == 200
+            response_data = response.json()
+
+            print(response_data)
+
+    asyncio.run(mulit_agent_chat_product_search())

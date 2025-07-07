@@ -264,8 +264,9 @@ class BaseAgent(ABC):
                         tool_args["user_id"] = state["user_id"]
                     if state.get("is_entry_agent"):
                         tool_args["is_entry_agent"] = False
-                    if state.get("user_input"):
-                        tool_args["user_input"] = state["user_input"]
+                    # TODO: ユーザー入力をツールに渡すかどうかは要検討
+                    # if state.get("user_input"):
+                    #     tool_args["user_input"] = state["user_input"]
 
                     # ツールを実行
                     tool_response = tool_instance.invoke(tool_args)

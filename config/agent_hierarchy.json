@@ -1,0 +1,68 @@
+{
+  "agent_hierarchy": {
+    "AgentDirector": {
+      "japanese_name": "ASPB統括エージェント",
+      "class_name": "AgentDirector",
+      "module_path": "ai_agents.agent_director",
+      "level": 0,
+      "injection_method": "task_router",
+      "description": "全体のタスクを分析し、適切なエージェントマネージャーにルーティングする統括エージェント",
+      "children": {
+        "ProductCenterAgentManager": {
+          "japanese_name": "商品センター統括エージェント",
+          "class_name": "ProductCenterAgentManager",
+          "module_path": "ai_agents.product_center.product_center_agent_manager",
+          "level": 1,
+          "injection_method": "agent_tool",
+          "description": "商品関連のタスクを管理し、適切な商品エージェントに処理を委譲するマネージャー",
+          "children": {
+            "ProductDetailAgent": {
+              "japanese_name": "商品詳細情報管理エージェント",
+              "class_name": "ProductDetailAgent",
+              "module_path": "ai_agents.product_center.product_detail_agent",
+              "level": 2,
+              "injection_method": "base_tool",
+              "description": "商品の詳細情報、在庫、価格、説明文などを管理する専門エージェント",
+              "children": {}
+            },
+            "ProductPublishAgent": {
+              "japanese_name": "商品棚上げ・棚下げ管理エージェント",
+              "class_name": "ProductPublishAgent",
+              "module_path": "ai_agents.product_center.product_publish_agent",
+              "level": 2,
+              "injection_method": "base_tool",
+              "description": "商品の公開・非公開状態を管理する専門エージェント",
+              "children": {}
+            }
+          }
+        }
+      }
+    }
+  },
+  "entry_points": [
+    {
+      "id": "agent_director",
+      "japanese_name": "ASPB統括エージェント",
+      "agent_key": "AgentDirector",
+      "description": "全体統括エージェント（マルチエージェント）"
+    },
+    {
+      "id": "product_center_manager",
+      "japanese_name": "商品センター統括エージェント",
+      "agent_key": "ProductCenterAgentManager",
+      "description": "商品管理専門エージェント"
+    },
+    {
+      "id": "product_detail",
+      "japanese_name": "商品詳細情報管理エージェント",
+      "agent_key": "ProductDetailAgent",
+      "description": "商品詳細・在庫・価格管理"
+    },
+    {
+      "id": "product_publish",
+      "japanese_name": "商品棚上げ・棚下げ管理エージェント",
+      "agent_key": "ProductPublishAgent",
+      "description": "商品公開・非公開管理"
+    }
+  ]
+}

@@ -43,9 +43,8 @@
             <div class="chat-header">
                 <div class="config-row">
                     <div class="config-label">🧠 エージェント:</div>
-                    <select id="agentModeSelect" class="agent-mode-select">
-                        <option value="single" selected>単一エージェント</option>
-                        <option value="multi">マルチエージェント</option>
+                    <select id="agentSelect" class="agent-select">
+                        {{AGENT_OPTIONS}}
                     </select>
 
                     <div class="config-label">🤖 LLM:</div>
@@ -103,6 +102,9 @@
     <script>
         // LLM設定（設定ファイルから読み込み）
         const llmConfigs = "{{LLM_JS_CONFIG}}";
+
+        // エージェント設定（設定ファイルから読み込み）
+        const agentConfigs = "{{AGENT_JS_CONFIG}}";
 
         // ユーザーID（実際のシステムでは認証から取得）
         const currentUserId = 'default_user';
@@ -343,7 +345,7 @@
         async function handleApiResponse(data) {
             let conversationId = data.conversation_id;
             let displayContent = '';
-            
+
             // エラーメッセージがある場合は特別な形式で表示
             if (data.error_message) {
                 displayContent = formatErrorMessage(data.error_message);
@@ -352,7 +354,7 @@
             } else {
                 displayContent = 'エラーが発生しました';
             }
-            
+
             return {
                 content: displayContent,
                 conversationId: conversationId,
@@ -360,7 +362,7 @@
                 hasError: !!data.error_message
             };
         }
-        
+
         // エラーメッセージを特別な形式でフォーマット
         function formatErrorMessage(errorMessage) {
             return `<div class="error-message-container">
@@ -376,7 +378,7 @@
                 </div>
             </div>`;
         }
-        
+
         // 最後のメッセージを再試行
         function retryLastMessage() {
             const messages = document.querySelectorAll('.message.user');
@@ -410,17 +412,24 @@
             const loadingId = addMessage('assistant', '', true);
 
             try {
-                // エージェントモードとLLMタイプを取得
-                const agentMode = document.getElementById('agentModeSelect').value;
+                // 選択されたエージェントとLLMタイプを取得
+                const selectedAgent = document.getElementById('agentSelect').value;
                 const llmModel = document.getElementById('llmSelect').value;
 
-                // APIリクエストの送信
-                const apiUrl = '/api/agent/director-agent/chat';
+                // 選択されたエージェントに基づいてAPIエンドポイントを決定
+                let apiUrl;
+                if (selectedAgent === 'AgentDirector') {
+                    apiUrl = '/api/agent/director-agent/chat';
+                } else {
+                    // 他のエージェントの場合は単一エージェントAPIを使用
+                    apiUrl = '/api/agent/single-agent/chat';
+                }
                 const requestBody = {
                     message: message,
                     user_id: currentUserId,
                     session_id: currentSessionId,
                     llm_type: llmModel,
+                    agent_type: selectedAgent,
                     context: {}
                 };
 
@@ -437,7 +446,7 @@
                 }
 
                 const data = await response.json();
-                
+
                 // レスポンスを処理
                 const processedResponse = await handleApiResponse(data);
 
@@ -483,7 +492,7 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             messageDiv.id = messageId;
-            
+
             // エラーメッセージの場合は特別なクラスを追加
             if (isError) {
                 messageDiv.classList.add('error-message');
@@ -664,8 +673,8 @@
                     parentElement.appendChild(loadingMessageDiv);
                 }
 
-                // エージェントモードとLLMモデルを取得
-                const agentMode = document.getElementById('agentModeSelect').value;
+                // 選択されたエージェントとLLMモデルを取得
+                const selectedAgent = document.getElementById('agentSelect').value;
                 const llmModel = document.getElementById('llmSelect').value;
 
                 const response = await fetch('/api/chat/regenerate_response', {
@@ -677,7 +686,7 @@
                         query: targetUserMessage,
                         session_id: currentSessionId,
                         user_id: currentUserId,
-                        agent_type: agentMode,
+                        agent_type: selectedAgent,
                         llm_type: llmModel,
                         conversation_id: conversationId
                     })

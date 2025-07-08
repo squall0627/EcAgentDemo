@@ -502,13 +502,38 @@ body {
     white-space: nowrap;
 }
 
-.agent-mode-select, .llm-select { 
+.agent-select, .agent-mode-select, .llm-select { 
     padding: 8px 12px; 
     border: 1px solid #ced4da; 
     border-radius: 4px; 
     background: white; 
     font-size: 14px;
-    min-width: 150px;
+    min-width: 200px;
+}
+
+/* エージェント階層表示のスタイル */
+.agent-select option[data-level="0"] {
+    font-weight: bold;
+    color: #2c3e50;
+    background-color: #f8f9fa;
+}
+
+.agent-select option[data-level="1"] {
+    padding-left: 20px;
+    color: #495057;
+    background-color: #ffffff;
+}
+
+.agent-select option[data-level="2"] {
+    padding-left: 60px;
+    color: #6c757d;
+    background-color: #ffffff;
+}
+
+/* 階層表示用のプレフィックス */
+.agent-hierarchy-prefix {
+    font-family: monospace;
+    color: #6c757d;
 }
 
 .llm-status { 

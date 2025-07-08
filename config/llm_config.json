@@ -1,6 +1,25 @@
 {
   "llm_models": [
     {
+      "value": "ollama_qwen3",
+      "label": "🦙 Ollama - Qwen3 30B",
+      "provider": "ollama",
+      "model": "qwen3:30b",
+      "base_url": "http://localhost:11434",
+      "temperature": 0.7,
+      "color": "ollama",
+      "description": "次世代Qwen大規模言語モデル",
+      "default": true,
+      "pricing": {
+        "type": "free",
+        "input_cost": 0,
+        "output_cost": 0,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "ローカル展開のため無料、ただし計算リソースが必要"
+      }
+    },
+    {
       "value": "ollama_qwen",
       "label": "🦙 Ollama - Qwen2.5 Coder 32B",
       "provider": "ollama",
@@ -9,7 +28,14 @@
       "temperature": 0.7,
       "color": "ollama",
       "description": "コード生成と理解に適した大規模モデル",
-      "default": true
+      "pricing": {
+        "type": "free",
+        "input_cost": 0,
+        "output_cost": 0,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "ローカル展開のため無料、ただし計算リソースが必要"
+      }
     },
     {
       "value": "ollama_deepseek_r1",
@@ -19,17 +45,15 @@
       "base_url": "http://localhost:11434",
       "temperature": 0.7,
       "color": "ollama",
-      "description": "推理能力に優れた最新のDeepSeekモデル"
-    },
-    {
-      "value": "ollama_qwen3",
-      "label": "🦙 Ollama - Qwen3 30B",
-      "provider": "ollama",
-      "model": "qwen3:30b",
-      "base_url": "http://localhost:11434",
-      "temperature": 0.7,
-      "color": "ollama",
-      "description": "次世代Qwen大規模言語モデル"
+      "description": "推理能力に優れた最新のDeepSeekモデル",
+      "pricing": {
+        "type": "free",
+        "input_cost": 0,
+        "output_cost": 0,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "ローカル展開のため無料、ただし計算リソースが必要"
+      }
     },
     {
       "value": "ollama_llama3",
@@ -39,7 +63,15 @@
       "base_url": "http://localhost:11434",
       "temperature": 0.7,
       "color": "ollama",
-      "description": "汎用対話モデル、高速レスポンス"
+      "description": "汎用対話モデル、高速レスポンス",
+      "pricing": {
+        "type": "free",
+        "input_cost": 0,
+        "output_cost": 0,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "ローカル展開のため無料、ただし計算リソースが必要"
+      }
     },
     {
       "value": "ollama_codellama",
@@ -49,7 +81,15 @@
       "base_url": "http://localhost:11434",
       "temperature": 0.7,
       "color": "ollama",
-      "description": "コードタスクに特化して最適化されたモデル"
+      "description": "コードタスクに特化して最適化されたモデル",
+      "pricing": {
+        "type": "free",
+        "input_cost": 0,
+        "output_cost": 0,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "ローカル展開のため無料、ただし計算リソースが必要"
+      }
     },
     {
       "value": "ollama_deepseek",
@@ -59,7 +99,15 @@
       "base_url": "http://localhost:11434",
       "temperature": 0.7,
       "color": "ollama",
-      "description": "軽量なコード生成モデル"
+      "description": "軽量なコード生成モデル",
+      "pricing": {
+        "type": "free",
+        "input_cost": 0,
+        "output_cost": 0,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "ローカル展開のため無料、ただし計算リソースが必要"
+      }
     },
     {
       "value": "openai_gpt4o_mini",
@@ -68,7 +116,15 @@
       "model": "gpt-4o-mini",
       "temperature": 0.1,
       "color": "openai",
-      "description": "OpenAI最新の軽量モデル、コストパフォーマンス高"
+      "description": "OpenAI最新の軽量モデル、コストパフォーマンス高",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.15,
+        "output_cost": 0.60,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "最もコスト効率の良いOpenAIモデル"
+      }
     },
     {
       "value": "openai_gpt4o",
@@ -77,16 +133,83 @@
       "model": "gpt-4o",
       "temperature": 0.1,
       "color": "openai",
-      "description": "OpenAI最強のマルチモーダルモデル"
+      "description": "OpenAI最強のマルチモーダルモデル",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 2.50,
+        "output_cost": 10.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "高性能だが高コスト"
+      }
     },
     {
-      "value": "openai_gpt4_turbo",
-      "label": "🤖 OpenAI - GPT-4 Turbo",
+      "value": "openai_gpt41_turbo",
+      "label": "🤖 OpenAI - GPT-4.1 Turbo",
       "provider": "openai",
-      "model": "gpt-4-turbo",
+      "model": "gpt-4.1-turbo",
       "temperature": 0.1,
       "color": "openai",
-      "description": "より高速なGPT-4バージョン"
+      "description": "最新のGPT-4.1ターボモデル、高速で高性能",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 10.00,
+        "output_cost": 30.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
+    },
+    {
+      "value": "openai_gpt41",
+      "label": "🤖 OpenAI - GPT-4.1",
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "temperature": 0.1,
+      "color": "openai",
+      "description": "最新のGPT-4.1モデル、より高度な推論能力",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 15.00,
+        "output_cost": 45.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
+    },
+    {
+      "value": "openai_gpt41_mini",
+      "label": "🤖 OpenAI - GPT-4.1 Mini",
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "temperature": 0.1,
+      "color": "openai",
+      "description": "軽量なGPT-4.1モデル、高速レスポンスでコスト効率良い",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.30,
+        "output_cost": 1.20,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
+    },
+    {
+      "value": "openai_gpt41_nano",
+      "label": "🤖 OpenAI - GPT-4.1 Nano",
+      "provider": "openai",
+      "model": "gpt-4.1-nano",
+      "temperature": 0.1,
+      "color": "openai",
+      "description": "超軽量なGPT-4.1モデル、最高のコストパフォーマンス",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.10,
+        "output_cost": 0.40,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
     },
     {
       "value": "openai_gpt35_turbo",
@@ -95,16 +218,219 @@
       "model": "gpt-3.5-turbo",
       "temperature": 0.1,
       "color": "openai",
-      "description": "クラシックなGPT-3.5モデル"
+      "description": "クラシックなGPT-3.5モデル",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.50,
+        "output_cost": 1.50,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "低コストの基本モデル"
+      }
     },
     {
-      "value": "anthropic_claude35_sonnet",
+      "value": "google_gemini25_pro",
+      "label": "🌟 Google - Gemini 2.5 Pro",
+      "provider": "google",
+      "model": "gemini-2.5-pro",
+      "temperature": 0.1,
+      "color": "google",
+      "description": "Google最新の大規模マルチモーダルモデル、高度な推論能力",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.31,
+        "output_cost": 0.625,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "高性能でコスト効率良い"
+      }
+    },
+    {
+      "value": "google_gemini25_flash",
+      "label": "🌟 Google - Gemini 2.5 Flash",
+      "provider": "google",
+      "model": "gemini-2.5-flash",
+      "temperature": 0.1,
+      "color": "google",
+      "description": "高速レスポンスのGemini 2.5、バランスの取れた性能",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.0375,
+        "output_cost": 0.0375,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "非常に低コストで高速"
+      }
+    },
+    {
+      "value": "google_gemini25_flash_8b",
+      "label": "🌟 Google - Gemini 2.5 Flash 8B",
+      "provider": "google",
+      "model": "gemini-2.5-flash-8b",
+      "temperature": 0.1,
+      "color": "google",
+      "description": "軽量なGemini 2.5 Flash、高速でコスト効率良い",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.0375,
+        "output_cost": 0.0375,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "最も低コストなGoogleモデル"
+      }
+    },
+    {
+      "value": "google_gemini25_nano",
+      "label": "🌟 Google - Gemini 2.5 Nano",
+      "provider": "google",
+      "model": "gemini-2.5-nano",
+      "temperature": 0.1,
+      "color": "google",
+      "description": "超軽量Gemini 2.5、エッジデバイス向け高速モデル",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.0125,
+        "output_cost": 0.0125,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
+    },
+    {
+      "value": "google_gemini15_pro",
+      "label": "🌟 Google - Gemini 1.5 Pro",
+      "provider": "google",
+      "model": "gemini-1.5-pro",
+      "temperature": 0.1,
+      "color": "google",
+      "description": "安定したGemini 1.5 Pro、長文コンテキスト対応",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.50,
+        "output_cost": 1.50,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "長文コンテキスト対応"
+      }
+    },
+    {
+      "value": "google_gemini15_flash",
+      "label": "🌟 Google - Gemini 1.5 Flash",
+      "provider": "google",
+      "model": "gemini-1.5-flash",
+      "temperature": 0.1,
+      "color": "google",
+      "description": "高速なGemini 1.5 Flash、日常タスクに最適",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.075,
+        "output_cost": 0.30,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "日常タスクに最適"
+      }
+    },
+    {
+      "value": "anthropic_claude4_sonnet",
+      "label": "🧠 Anthropic - Claude 4 Sonnet",
+      "provider": "anthropic",
+      "model": "claude-4-sonnet-20250101",
+      "temperature": 0.1,
+      "color": "anthropic",
+      "description": "最新世代Claude 4 Sonnet、革新的な推論能力と創造性",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 5.00,
+        "output_cost": 25.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
+    },
+    {
+      "value": "anthropic_claude37_sonnet",
+      "label": "🧠 Anthropic - Claude 3.7 Sonnet",
+      "provider": "anthropic",
+      "model": "claude-3-7-sonnet-20241201",
+      "temperature": 0.1,
+      "color": "anthropic",
+      "description": "進化したClaude 3.7 Sonnet、向上した推論と理解力",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 4.00,
+        "output_cost": 20.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "価格は推定値、最新情報は公式サイトで確認"
+      }
+    },
+    {
+      "value": "anthropic_claude35_sonnet_latest",
       "label": "🧠 Anthropic - Claude 3.5 Sonnet",
       "provider": "anthropic",
       "model": "claude-3-5-sonnet-20241022",
       "temperature": 0.1,
       "color": "anthropic",
-      "description": "Anthropic最新の高性能モデル"
+      "description": "最新版Claude 3.5 Sonnet、最高性能の推論と創造性",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 3.00,
+        "output_cost": 15.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "高性能な推論と創造性"
+      }
+    },
+    {
+      "value": "anthropic_claude35_haiku",
+      "label": "🧠 Anthropic - Claude 3.5 Haiku",
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "temperature": 0.1,
+      "color": "anthropic",
+      "description": "最新Claude 3.5 Haiku、高速でコスト効率の良い軽量モデル",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 1.00,
+        "output_cost": 5.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "高速でコスト効率良い"
+      }
+    },
+    {
+      "value": "anthropic_claude3_opus",
+      "label": "🧠 Anthropic - Claude 3 Opus",
+      "provider": "anthropic",
+      "model": "claude-3-opus-20240229",
+      "temperature": 0.1,
+      "color": "anthropic",
+      "description": "最高級Claude 3 Opus、複雑なタスクに最適な大規模モデル",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 15.00,
+        "output_cost": 75.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "最高性能だが高コスト"
+      }
+    },
+    {
+      "value": "anthropic_claude3_sonnet",
+      "label": "🧠 Anthropic - Claude 3 Sonnet",
+      "provider": "anthropic",
+      "model": "claude-3-sonnet-20240229",
+      "temperature": 0.1,
+      "color": "anthropic",
+      "description": "Claude 3 Sonnet、中級性能でバランスの取れたモデル",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 3.00,
+        "output_cost": 15.00,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "バランスの取れた性能"
+      }
     },
     {
       "value": "anthropic_claude3_haiku",
@@ -113,14 +439,22 @@
       "model": "claude-3-haiku-20240307",
       "temperature": 0.1,
       "color": "anthropic",
-      "description": "高速レスポンスの軽量モデル"
+      "description": "軽量なClaude 3 Haiku、高速レスポンスでコスト効率良い",
+      "pricing": {
+        "type": "pay_per_use",
+        "input_cost": 0.25,
+        "output_cost": 1.25,
+        "currency": "USD",
+        "unit": "1M tokens",
+        "note": "軽量で高速"
+      }
     }
   ],
   "provider_settings": {
     "ollama": {
       "requires_api_key": false,
       "default_base_url": "http://localhost:11434",
-      "fallback_model": "qwen2.5-coder:32b"
+      "fallback_model": "qwen3:30b"
     },
     "openai": {
       "requires_api_key": true,
@@ -130,7 +464,12 @@
     "anthropic": {
       "requires_api_key": true,
       "api_key_env": "ANTHROPIC_API_KEY",
-      "fallback_model": "claude-3-haiku-20240307"
+      "fallback_model": "claude-3-5-haiku-20241022"
+    },
+    "google": {
+      "requires_api_key": true,
+      "api_key_env": "GOOGLE_API_KEY",
+      "fallback_model": "gemini-2.5-flash-8b"
     }
   }
 }

@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any
 import os
 import json
 from config.llm_config_loader import llm_config
+from config.agent_hierarchy_loader import agent_hierarchy_loader
 from utils.langfuse_handler import get_global_langfuse_handler
 
 router = APIRouter()
@@ -101,6 +102,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     llm_type: Optional[str] = "ollama"
+    agent_type: Optional[str] = None  # 指定エージェント（省略時はデフォルトエージェント）
     context: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class MultiAgentChatRequest(ChatRequest):
@@ -154,11 +156,23 @@ class SimulationRequest(BaseModel):
 async def single_agent_chat(request: ChatRequest):
     """単一エージェントとの対話"""
     try:
-        # リクエストからllm_typeを取得
+        # リクエストからllm_typeとagent_typeを取得
         llm_type = getattr(request, 'llm_type', 'ollama')
+        agent_type = getattr(request, 'agent_type', None)
 
-        # 単一エージェントを取得
-        agent = get_single_agent(llm_type)
+        # エージェントを動的に選択
+        if agent_type and agent_type != 'AgentDirector':
+            # 指定されたエージェントタイプを使用
+            api_key = os.getenv("OPENAI_API_KEY")
+            agent = agent_hierarchy_loader.create_agent_instance(
+                agent_key=agent_type,
+                api_key=api_key,
+                llm_type=llm_type,
+                use_langfuse=True
+            )
+        else:
+            # デフォルトエージェントを使用
+            agent = get_single_agent(llm_type)
 
         # コマンドを処理
         response = agent.process_command(

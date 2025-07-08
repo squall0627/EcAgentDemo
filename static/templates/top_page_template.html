@@ -139,30 +139,29 @@
 
         // 新しいチャットを開始
         function startNewChat() {
-            if (confirm('新しいチャットを開始しますか？現在の会話履歴は保存されます。')) {
-                // 新しいセッションIDを生成
-                currentSessionId = generateSessionId();
-                localStorage.setItem('productManagementSessionId', currentSessionId);
-                document.getElementById('sessionId').textContent = currentSessionId;
+            // 新しいセッションIDを生成
+            currentSessionId = generateSessionId();
+            localStorage.setItem('productManagementSessionId', currentSessionId);
+            document.getElementById('sessionId').textContent = currentSessionId;
 
-                // チャットメッセージをクリア
-                const chatMessages = document.getElementById('chatMessages');
-                chatMessages.innerHTML = `
-                    <div class="welcome-message">
-                        <h4>👋 ようこそ！</h4>
-                        <p>下の入力欄にコマンドを入力して会話を始めてください。<br>
-                        システムが自動的に適切な操作画面を生成します。</p>
-                    </div>
-                `;
+            // チャットメッセージをクリア
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = `
+                <div class="welcome-message">
+                    <h4>👋 ようこそ！</h4>
+                    <p>下の入力欄にコマンドを入力して会話を始めてください。<br>
+                    システムが自動的に適切な操作画面を生成します。</p>
+                </div>
+            `;
 
-                // 入力欄をクリア
-                document.getElementById('commandInput').value = '';
+            // 入力欄をクリア
+            document.getElementById('commandInput').value = '';
 
-                // 履歴を再読み込み
-                loadConversationHistory();
+            // 履歴を再読み込み
+            loadConversationHistory();
 
-                showNotification('新しいチャットを開始しました', 'success');
-            }
+            showNotification('新しいチャットを開始しました', 'success');
+
         }
 
         // 履歴サイドバーを開く

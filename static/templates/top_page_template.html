@@ -41,20 +41,32 @@
         <div class="chat-container">
             <!-- チャットヘッダー（設定エリア） -->
             <div class="chat-header">
-                <div class="config-row">
-                    <div class="config-label">🧠 エージェント:</div>
-                    <select id="agentSelect" class="agent-select">
-                        {{AGENT_OPTIONS}}
-                    </select>
+                <div class="config-grid">
+                    <!-- Left column: Agent selection -->
+                    <div class="config-column">
+                        <div class="config-label">🧠 エージェント:</div>
+                        <select id="agentSelect" class="agent-select">
+                            {{AGENT_OPTIONS}}
+                        </select>
+                    </div>
 
-                    <div class="config-label">🤖 LLM:</div>
-                    <select id="llmSelect" class="llm-select">
-                        {{LLM_OPTIONS}}
-                    </select>
+                    <!-- Center column: LLM selection -->
+                    <div class="config-column">
+                        <div class="config-label">🤖 LLM:</div>
+                        <select id="llmSelect" class="llm-select">
+                            {{LLM_OPTIONS}}
+                        </select>
+                    </div>
 
-                    <div class="llm-status">
-                        <span class="llm-indicator" id="llmIndicator"></span>
-                        <span id="llmStatus">読み込み中...</span>
+                    <!-- Right column: Selected LLM status and pricing -->
+                    <div class="config-column">
+                        <div class="llm-status">
+                            <span class="llm-indicator" id="llmIndicator"></span>
+                            <span id="llmStatus">読み込み中...</span>
+                        </div>
+                        <div class="llm-pricing" id="llmPricing">
+                            <!-- 価格情報がここに表示されます -->
+                        </div>
                     </div>
                 </div>
 
@@ -312,11 +324,36 @@
             }, 3000);
         }
 
+        // 価格情報をフォーマットする関数
+        function formatPricing(pricing) {
+            if (!pricing) {
+                return '';
+            }
+
+            const { type, input_cost, output_cost, currency, unit, note } = pricing;
+
+            if (type === 'free') {
+                return `💰 無料 ${note ? `(${note})` : ''}`;
+            } else if (type === 'pay_per_use') {
+                const inputCostStr = input_cost === 0 ? '無料' : `$${input_cost}`;
+                const outputCostStr = output_cost === 0 ? '無料' : `$${output_cost}`;
+
+                let priceText = `💰 入力: ${inputCostStr} / 出力: ${outputCostStr} per ${unit}`;
+                if (note) {
+                    priceText += ` (${note})`;
+                }
+                return priceText;
+            } else {
+                return note ? `💰 ${note}` : '';
+            }
+        }
+
         // LLMステータス更新
         function updateLLMStatus() {
             const select = document.getElementById('llmSelect');
             const indicator = document.getElementById('llmIndicator');
             const status = document.getElementById('llmStatus');
+            const pricing = document.getElementById('llmPricing');
 
             const selectedOption = select.options[select.selectedIndex];
             const provider = selectedOption.dataset.provider;
@@ -338,6 +375,20 @@
             status.textContent = `${provider} - ${model}`;
             if (description) {
                 status.title = description;
+            }
+
+            // 価格情報を更新
+            try {
+                const llmConfigsData = JSON.parse(llmConfigs);
+                const selectedModel = llmConfigsData.find(m => m.value === select.value);
+                if (selectedModel && selectedModel.pricing) {
+                    pricing.innerHTML = formatPricing(selectedModel.pricing);
+                } else {
+                    pricing.innerHTML = '';
+                }
+            } catch (error) {
+                console.error('価格情報の取得に失敗しました:', error);
+                pricing.innerHTML = '';
             }
         }
 

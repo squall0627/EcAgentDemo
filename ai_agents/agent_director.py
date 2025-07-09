@@ -9,6 +9,7 @@ from ai_agents.base_agent import BaseAgent, BaseAgentState
 from ai_agents.intelligent_agent_router import AgentCapability
 from ai_agents.task_planner import AgentManagerRegistry, SortedTaskExtractorAndRouterNode, TaskGrouper, TaskDistributor
 from ai_agents.product_center.product_center_agent_manager import ProductCenterAgentManager
+from ai_agents.order_center.order_center_agent_manager import OrderCenterAgentManager
 
 
 class AgentDirectorState(BaseAgentState):
@@ -38,7 +39,8 @@ class AgentDirector(BaseAgent):
 
         # 下流AgentManagerを事前登録
         registered_agent_managers = {
-            "ProductCenterAgentManager": ProductCenterAgentManager
+            "ProductCenterAgentManager": ProductCenterAgentManager,
+            "OrderCenterAgentManager": OrderCenterAgentManager
         }
 
         # AgentManagerRegistryを初期化（共有インスタンス管理）
@@ -113,26 +115,27 @@ class AgentDirector(BaseAgent):
 
         except Exception as e:
             print(f"❌ SortedTaskExtractorAndRouter Node エラー: {e}")
-            # エラー時はフォールバックタスクを設定
-            fallback_task = [{
-                "target_agent": "product_center_agent_manager",
-                "command": {
-                    "action": "search_product",
-                    "condition": f"user_request: {user_input}"
-                },
-                "priority": 1
-            }]
-
-            state["sorted_routed_tasks"] = fallback_task
-            state["task_planning_info"] = {
-                "step": "1&2_combined",
-                "description": "Fallback task created due to extraction/routing error",
-                "original_input": user_input,
-                "sorted_routed_task_count": 1,
-                "error": str(e)
-            }
-
-            return state
+            raise e # TODO: エラー処理を適切に行う
+            # # エラー時はフォールバックタスクを設定
+            # fallback_task = [{
+            #     "target_agent": "product_center_agent_manager",
+            #     "command": {
+            #         "action": "search_product",
+            #         "condition": f"user_request: {user_input}"
+            #     },
+            #     "priority": 1
+            # }]
+            #
+            # state["sorted_routed_tasks"] = fallback_task
+            # state["task_planning_info"] = {
+            #     "step": "1&2_combined",
+            #     "description": "Fallback task created due to extraction/routing error",
+            #     "original_input": user_input,
+            #     "sorted_routed_task_count": 1,
+            #     "error": str(e)
+            # }
+            #
+            # return state
 
     def _task_grouper_node(self, state: AgentDirectorState) -> AgentDirectorState:
         """
@@ -367,33 +370,7 @@ class AgentDirector(BaseAgent):
 
     def _get_system_message_content(self, is_entry_agent: bool = True) -> str:
         """Director system message with SortedTaskExtractorAndRouterNode integration"""
-        return """
-You are the AgentDirector, the supreme commander of a multi-layer Agent system.
-
-## Your Purpose
-    Execute the pre-planned, prioritized, and grouped tasks provided by the TaskPlanner workflow.
-
-## Available AgentManager Tools
-    - **product_center_agent_manager**: Handles product search, inventory management, price changes, product activation/deactivation
-
-## Response Format
-    - Structured JSON response
-    - Include "html_content" field for direct screen rendering when needed
-    - Include "error" field for error messages in Japanese
-    - Include "next_actions" field for suggested next steps (considering conversation history)
-
-## Important Principles
-    1. **Error handling**: Handle execution errors gracefully and provide meaningful feedback
-    2. **Context preservation**: Maintain conversation history and execution context
-
-## Conversation History Usage
-    - **Continuity**: Remember previous operations and search results for informed execution
-    - **Progress tracking**: Build upon previous execution results and maintain workflow state
-    - **Error correction**: Learn from past execution errors to improve current execution
-    - **Information reuse**: Leverage previously obtained data to optimize current execution
-
-Always respond in friendly, clear Japanese while executing tasks efficiently and providing meaningful progress updates.
-"""
+        pass
 
     def _get_workflow_name(self) -> str:
         """ワークフロー名を取得"""

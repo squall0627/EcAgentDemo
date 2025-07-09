@@ -1,0 +1,22 @@
+{
+  "llm_models": [
+    {
+      "value": "ollama_qwen3",
+      "label": "🦙 Ollama - Qwen3 30B",
+      "provider": "ollama",
+      "model": "qwen3:30b",
+      "base_url": "http://localhost:11434",
+      "temperature": 0.7,
+      "color": "ollama",
+      "description": "デフォルトローカルモデル",
+      "default": true
+    }
+  ],
+  "provider_settings": {
+    "ollama": {
+      "requires_api_key": false,
+      "default_base_url": "http://localhost:11434",
+      "fallback_model": "qwen3:30b"
+    }
+  }
+}

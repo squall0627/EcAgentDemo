@@ -114,71 +114,43 @@ async def regenerate_response(
     llm_type: Optional[str] = Form("ollama"),
     db: Session = Depends(get_db)
 ):
-    """Agent応答を再生成"""
+    """エージェント応答を再生成"""
 
-    # 1. 根据agent_type调用相应的API
+    # 1. エージェントタイプに基づいて適切なAPIを呼び出す
     new_response = None
     agent_response_data = None
 
     try:
         async with httpx.AsyncClient() as client:
-            # if agent_type in ["multi", "collaboration"]:
-            #     # 调用多agent API
-            #     api_url = f"{AGENT_API_BASE_URL}/api/agent/multi-agent/chat"
-            #     payload = {
-            #         "message": query,
-            #         "context": context or "",
-            #         "llm_type": llm_type,
-            #         "session_id": session_id or "",
-            #         "user_id": user_id or "",
-            #         "agent_type": None if agent_type == "multi" else agent_type,
-            #         "enable_collaboration": agent_type == "collaboration"  # TODO
-            #     }
-            #
-            #     # 如果是协作模式，添加协作参数
-            #     if agent_type == "collaboration":
-            #         payload["collaboration"] = True
-            #
-            # else:
-            #     # 调用单agent API
-            #     api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
-            #     payload = {
-            #         "message": query,
-            #         "llm_type": llm_type,
-            #         "session_id": session_id or "",
-            #         "user_id": user_id or ""
-            #     }
-            #
-            #     # 如果有context，添加到payload中
-            #     if context:
-            #         payload["context"] = context
-
-            api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
+            # 前端と同じAPIエンドポイント決定ロジック
+            if agent_type == "AgentDirector":
+                api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
+            else:
+                # 他のエージェントの場合は単一エージェントAPIを使用
+                api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
+            
+            # 前端と同じリクエストボディ構造
             payload = {
                 "message": query,
-                "llm_type": llm_type,
-                "session_id": session_id or "",
                 "user_id": user_id or "",
-                "is_entry_agent": True,
+                "session_id": session_id or "",
+                "llm_type": llm_type,
+                "agent_type": agent_type,
+                "context": context if context else {}
             }
 
-            # 如果有context，添加到payload中
-            if context:
-                payload["context"] = context
-
-
-            # 发送HTTP请求
+            # HTTPリクエストを送信
             response = await client.post(
                 api_url,
                 json=payload,
-                timeout=300  # TODO 设置超时时间
+                timeout=300  # タイムアウト時間を設定
             )
 
-            # 检查响应状态
+            # レスポンスステータスを確認
             if response.status_code == 200:
                 agent_response_data = response.json()
 
-                # 从响应中提取文本
+                # レスポンスからテキストを抽出
                 if isinstance(agent_response_data, dict):
                     new_response = agent_response_data.get('response', str(agent_response_data))
                 else:
@@ -186,18 +158,18 @@ async def regenerate_response(
             else:
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"Agent API调用失败: {response.text}"
+                    detail=f"Agent API呼び出しが失敗しました: {response.text}"
                 )
     except httpx.TimeoutException:
-        print("⚠️ Agent API调用超时")
+        print("⚠️ Agent API呼び出しタイムアウト")
         new_response = "申し訳ございません。応答の生成に時間がかかりすぎました。もう一度お試しください。"
-        raise HTTPException(status_code=500, detail=new_response)
+        raise HTTPException(status_code=408, detail=new_response)
     except httpx.RequestError as e:
-        print(f"⚠️ Agent API请求错误: {e}")
+        print(f"⚠️ Agent APIリクエストエラー: {e}")
         new_response = f"申し訳ございません。Agent APIへの接続に失敗しました: {str(e)}"
-        raise HTTPException(status_code=500, detail=new_response)
+        raise HTTPException(status_code=503, detail=new_response)
     except Exception as agent_error:
-        print(f"⚠️ Agent応答生成エラー: {agent_error}")
+        print(f"⚠️ エージェント応答生成エラー: {agent_error}")
         new_response = f"申し訳ございません。応答の再生成中にエラーが発生しました: {str(agent_error)}"
         raise HTTPException(status_code=500, detail=new_response)
 
@@ -212,7 +184,7 @@ async def regenerate_response(
         except Exception as delete_error:
             print(f"⚠️ 古い履歴削除エラー: {delete_error}")
 
-    # 3. フロントエンドが期待するJSON形式でレスポンスを返す
+    # 3. 前端が期待するJSON形式でレスポンスを返す
     response_data = {
         "response": new_response,
         "html_content": None,
@@ -233,7 +205,10 @@ async def regenerate_response(
             "workflow_step": agent_response_data.get("workflow_step"),
             "llm_type_used": agent_response_data.get("llm_type_used"),
             "agent_type": agent_response_data.get("agent_type"),
-            "next_actions": agent_response_data.get("next_actions")
+            "next_actions": agent_response_data.get("next_actions"),
+            "session_id": agent_response_data.get("session_id"),
+            "user_id": agent_response_data.get("user_id"),
+            "error_message": agent_response_data.get("error_message")
         })
 
     return response_data

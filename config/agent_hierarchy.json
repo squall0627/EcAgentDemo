@@ -35,6 +35,52 @@
               "children": {}
             }
           }
+        },
+        "OrderCenterAgentManager": {
+          "japanese_name": "注文センター統括エージェント",
+          "class_name": "OrderCenterAgentManager",
+          "module_path": "ai_agents.order_center.order_center_agent_manager",
+          "level": 1,
+          "injection_method": "agent_tool",
+          "description": "注文関連のタスクを管理し、適切な注文エージェントに処理を委譲するマネージャー",
+          "children": {
+            "OrderDetailAgent": {
+              "japanese_name": "注文詳細情報管理エージェント",
+              "class_name": "OrderDetailAgent",
+              "module_path": "ai_agents.order_center.order_detail_agent",
+              "level": 2,
+              "injection_method": "base_tool",
+              "description": "注文の詳細情報を取得・表示する専門エージェント",
+              "children": {}
+            },
+            "OrderItemModificationAgent": {
+              "japanese_name": "注文商品変更管理エージェント",
+              "class_name": "OrderItemModificationAgent",
+              "module_path": "ai_agents.order_center.order_item_modification_agent",
+              "level": 2,
+              "injection_method": "base_tool",
+              "description": "注文の商品内容を変更する専門エージェント",
+              "children": {}
+            },
+            "OrderStatusChangeAgent": {
+              "japanese_name": "注文状態変更管理エージェント",
+              "class_name": "OrderStatusChangeAgent",
+              "module_path": "ai_agents.order_center.order_status_change_agent",
+              "level": 2,
+              "injection_method": "base_tool",
+              "description": "注文の各種ステータス（注文状態、支払い状態、配送状態）を変更する専門エージェント",
+              "children": {}
+            },
+            "OrderCancellationAgent": {
+              "japanese_name": "注文取消・返品管理エージェント",
+              "class_name": "OrderCancellationAgent",
+              "module_path": "ai_agents.order_center.order_cancellation_agent",
+              "level": 2,
+              "injection_method": "base_tool",
+              "description": "注文のキャンセルや返品処理を行う専門エージェント",
+              "children": {}
+            }
+          }
         }
       }
     }
@@ -63,6 +109,36 @@
       "japanese_name": "商品棚上げ・棚下げ管理エージェント",
       "agent_key": "ProductPublishAgent",
       "description": "商品公開・非公開管理"
+    },
+    {
+      "id": "order_center_manager",
+      "japanese_name": "注文センター統括エージェント",
+      "agent_key": "OrderCenterAgentManager",
+      "description": "注文管理専門エージェント"
+    },
+    {
+      "id": "order_detail",
+      "japanese_name": "注文詳細情報管理エージェント",
+      "agent_key": "OrderDetailAgent",
+      "description": "注文詳細情報取得・表示"
+    },
+    {
+      "id": "order_item_modification",
+      "japanese_name": "注文商品変更管理エージェント",
+      "agent_key": "OrderItemModificationAgent",
+      "description": "注文商品内容変更"
+    },
+    {
+      "id": "order_status_change",
+      "japanese_name": "注文状態変更管理エージェント",
+      "agent_key": "OrderStatusChangeAgent",
+      "description": "注文・支払い・配送状態変更"
+    },
+    {
+      "id": "order_cancellation",
+      "japanese_name": "注文取消・返品管理エージェント",
+      "agent_key": "OrderCancellationAgent",
+      "description": "注文キャンセル・返品処理"
     }
   ]
 }

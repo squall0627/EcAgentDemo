@@ -129,6 +129,41 @@
         }
         document.getElementById('sessionId').textContent = currentSessionId;
 
+        // エージェントとLLM選択の保存・復元機能
+        function saveAgentSelection() {
+            const agentSelect = document.getElementById('agentSelect');
+            localStorage.setItem('selectedAgent', agentSelect.value);
+        }
+
+        function saveLLMSelection() {
+            const llmSelect = document.getElementById('llmSelect');
+            localStorage.setItem('selectedLLM', llmSelect.value);
+        }
+
+        function restoreSelections() {
+            // エージェント選択を復元
+            const savedAgent = localStorage.getItem('selectedAgent');
+            if (savedAgent) {
+                const agentSelect = document.getElementById('agentSelect');
+                const agentOption = agentSelect.querySelector(`option[value="${savedAgent}"]`);
+                if (agentOption) {
+                    agentSelect.value = savedAgent;
+                }
+            }
+
+            // LLM選択を復元
+            const savedLLM = localStorage.getItem('selectedLLM');
+            if (savedLLM) {
+                const llmSelect = document.getElementById('llmSelect');
+                const llmOption = llmSelect.querySelector(`option[value="${savedLLM}"]`);
+                if (llmOption) {
+                    llmSelect.value = savedLLM;
+                    // LLMステータスも更新
+                    updateLLMStatus();
+                }
+            }
+        }
+
         // IME入力状態の管理
         let isComposing = false;
 
@@ -156,6 +191,9 @@
 
             // 入力欄をクリア
             document.getElementById('commandInput').value = '';
+
+            // エージェントとLLMの選択は保持する（ユーザーの要求に応じて）
+            // 選択状態は既にlocalStorageに保存されているので、何もしない
 
             // 履歴を再読み込み
             loadConversationHistory();
@@ -625,6 +663,36 @@
             }
         }
 
+        // Execute scripts in dynamically inserted HTML content
+        function executeScriptsInElement(element) {
+            const scripts = element.querySelectorAll('script');
+            scripts.forEach(script => {
+                try {
+                    // Create a new script element and copy attributes
+                    const newScript = document.createElement('script');
+
+                    // Copy all attributes from the original script
+                    Array.from(script.attributes).forEach(attr => {
+                        newScript.setAttribute(attr.name, attr.value);
+                    });
+
+                    // Set the script content
+                    if (script.src) {
+                        // External script - set src
+                        newScript.src = script.src;
+                    } else {
+                        // Inline script - set text content
+                        newScript.textContent = script.textContent;
+                    }
+
+                    // Remove the original script and add the new one to execute it
+                    script.parentNode.replaceChild(newScript, script);
+                } catch (error) {
+                    console.error('Error executing script:', error);
+                }
+            });
+        }
+
         // メッセージを追加（エラー表示対応版）
         function addMessage(role, content, isLoading = false, traceId = null, timestamp = null, conversationId = null, isError = false) {
             const chatMessages = document.getElementById('chatMessages');
@@ -670,6 +738,9 @@
                 let formattedContent;
                 if (isError) {
                     formattedContent = content; // エラーメッセージはすでにフォーマット済み
+                } else if (content.includes('ai-html-content') || content.includes('ai-response-container')) {
+                    // HTML content (structured response) の場合はそのまま表示（newline to br conversion を適用しない）
+                    formattedContent = content;
                 } else {
                     formattedContent = content
                         .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
@@ -679,6 +750,9 @@
 
                 contentHTML += `<div class="message-text">${formattedContent}</div>`;
                 contentDiv.innerHTML = contentHTML;
+
+                // Execute any scripts in the inserted HTML content
+                executeScriptsInElement(contentDiv);
 
                 // アシスタントメッセージにアクションボタンを追加（エラーメッセージの場合は追加しない）
                 if (role === 'assistant' && !isLoading && !isError) {
@@ -869,13 +943,23 @@
                 let contentHTML = `<div class="message-timestamp">${new Date().toLocaleString('ja-JP')}</div>`;
 
                 // マークダウン風の簡単な変換
-                let formattedContent = (data.response || '再生成に失敗しました')
-                    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-                    .replace(/`([^`]+)`/g, '<code>$1</code>')
-                    .replace(/\n/g, '<br>');
+                let responseContent = data.response || '再生成に失敗しました';
+                let formattedContent;
+                if (responseContent.includes('ai-html-content') || responseContent.includes('ai-response-container')) {
+                    // HTML content (structured response) の場合はそのまま表示（newline to br conversion を適用しない）
+                    formattedContent = responseContent;
+                } else {
+                    formattedContent = responseContent
+                        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                        .replace(/`([^`]+)`/g, '<code>$1</code>')
+                        .replace(/\n/g, '<br>');
+                }
 
                 contentHTML += `<div class="message-text">${formattedContent}</div>`;
                 newContentDiv.innerHTML = contentHTML;
+
+                // Execute any scripts in the inserted HTML content
+                executeScriptsInElement(newContentDiv);
 
                 // アクションボタンを追加
                 const actionsDiv = document.createElement('div');
@@ -1028,7 +1112,12 @@
         }
 
         // イベントリスナー
-        document.getElementById('llmSelect').addEventListener('change', updateLLMStatus);
+        document.getElementById('llmSelect').addEventListener('change', function() {
+            updateLLMStatus();
+            saveLLMSelection();
+        });
+
+        document.getElementById('agentSelect').addEventListener('change', saveAgentSelection);
 
         // テキストエリアのイベントリスナー設定
         const commandInput = document.getElementById('commandInput');
@@ -1061,6 +1150,7 @@
         });
 
         // 初期化
+        restoreSelections();
         updateLLMStatus();
 
         // ページ読み込み時に会話履歴を読み込み

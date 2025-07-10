@@ -58,8 +58,14 @@ class ValidateProductInput(BaseModel):
     jancode: str = Field(description="検証する商品のJANコード")
 
 class GenerateHtmlInput(BaseModel):
-    page_type: str = Field(description="生成するページタイプ: product_list(商品明細一覧画面を生成)/category_form(商品カテゴリー管理画面を生成)/stock_form(在庫管理画面を生成)/price_form(価格管理画面を生成)/description_form(商品説明管理画面を生成)/error_page(エラー発生時のエラーメッセージ画面を生成)")
-    data: Optional[Dict[str, Any]] = Field(default=None, description="ページ生成に必要なデータ")
+    page_type: str = Field(description="""Page types to generate:
+•	product_list: Generate the product detail list page
+•	category_form: Generate the product category management page
+•	stock_form: Generate the inventory management page
+•	price_form: Generate the price management page
+•	description_form: Generate the product description management page
+•	error_page: Generate the error message page to be displayed when an error occurs""")
+    data: Optional[Dict[str, Any]] = Field(default=None, description="Data required for page generation")
 
 class PublishProductsInput(BaseModel):
     jancodes: List[str] = Field(description="棚上げする商品のJANコードリスト")
@@ -338,9 +344,9 @@ class ValidateCanPublishProductTool(BaseTool):
 
 class GenerateHtmlTool(BaseTool):
     name: str = "generate_html_page"
-    description: str = """引数「page_type」に応じるHTML画面を動的生成します。
+    description: str = """Dynamically generate an HTML page corresponding to the argument page_type.
 page_type:
-- product_list　(商品明細一覧画面を生成)
+- product_list　(Generate an HTML page that displays a list of product details.)
   data: 
     {
       products: [
@@ -483,11 +489,11 @@ page_type:
         }
       ]
     }
-- category_form　(商品カテゴリー管理画面を生成)  
-- stock_form　(在庫管理画面を生成)
-- price_form　(価格管理画面を生成)
-- description_form　(商品説明管理画面を生成)
-- error_page　(エラー発生時のエラーメッセージ画面を生成)"""
+- category_form　(Generate an HTML page for managing product categories.)  
+- stock_form　(Generate an HTML page for managing product inventory.)
+- price_form　(Generate an HTML page for managing product prices.)
+- description_form　(Generate an HTML page for managing product prices.)
+- error_page　(Generate an error message page for error occurrences.)"""
     args_schema: Type[BaseModel] = GenerateHtmlInput
 
     def _run(self, page_type: str, data: Optional[Dict[str, Any]]) -> str:

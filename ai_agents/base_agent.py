@@ -200,9 +200,21 @@ class BaseAgent(ABC):
             print("\n🤔 LLM Thoughts:")
             print(thoughts)
 
+        # JSONブロックを探す（```json...```の形式も対応）
+        if "```json" in response_content:
+            start = response_content.find("```json") + 7
+            end = response_content.find("```", start)
+            json_content = response_content[start:end].strip()
+        elif "```" in response_content:
+            start = response_content.find("```") + 3
+            end = response_content.find("```", start)
+            json_content = response_content[start:end].strip()
+        else:
+            json_content = response_content
+
         # レスポンス内容をJSONとして解析
         try:
-            content_dict = json.loads(response_content)
+            content_dict = json.loads(json_content)
             if isinstance(content_dict, dict):
                 if "html_content" in content_dict:
                     state["html_content"] = content_dict["html_content"]
@@ -213,8 +225,8 @@ class BaseAgent(ABC):
         except json.JSONDecodeError:
             pass
 
-        response.content = response_content
-        print(f"\n💬 {self.agent_name} Response:\n{response_content}")
+        response.content = json_content
+        print(f"\n💬 {self.agent_name} Response:\n{json_content}")
 
         state["messages"].append(response)
 

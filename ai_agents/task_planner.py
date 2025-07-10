@@ -245,11 +245,11 @@ Now extract, route, and prioritize tasks from the following user input:
             response_content = response.content.strip()
             response_content, thoughts = clean_think_output(response_content)
             if thoughts:
+                # Display LLM thoughts before parsing JSON
                 print("\n🤔 LLM Thoughts:")
                 print(thoughts)
 
             # JSONブロックを探す（```json...```の形式も対応）
-            # Display LLM thoughts before parsing JSON
             if "```json" in response_content:
                 start = response_content.find("```json") + 7
                 end = response_content.find("```", start)

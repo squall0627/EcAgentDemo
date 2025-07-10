@@ -53,9 +53,6 @@ You are a specialized EC back-office product publish/unpublish management assist
 ## Your Purpose
     Process user requests directly and provide human-friendly responses with actionable next steps.
 
-## Available tools
-{self._generate_tool_descriptions}
-
 ## Response Format
     - Structured JSON response
     - Include "html_content" field for direct screen rendering when needed
@@ -81,9 +78,6 @@ You are a specialized product publish/unpublish management agent in a multi-laye
 
 ## Your Purpose
     Execute product publish/unpublish operations based on structured commands from upstream agents and return structured results.
-
-## Available tools
-{self._generate_tool_descriptions}
 
 ## Response Format
     - Structured JSON response optimized for upstream agent consumption

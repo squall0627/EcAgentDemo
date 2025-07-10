@@ -88,11 +88,89 @@ def _generate_product_list_html(data: Dict[str, Any]) -> str:
         .btn-publish { background-color: #4CAF50; color: white; }
         .btn-unpublish { background-color: #f44336; color: white; }
         .btn-edit { background-color: #008CBA; color: white; }
+        .btn-edit-category { background-color: #FF9800; color: white; }
+        .btn-edit-inventory { background-color: #9C27B0; color: white; }
+        .btn-edit-price { background-color: #2196F3; color: white; }
+        .btn-edit-description { background-color: #607D8B; color: white; }
         .status-published { color: #4CAF50; font-weight: bold; }
         .status-unpublished { color: #f44336; font-weight: bold; }
         .error { color: #f44336; font-size: 12px; }
         .price { font-weight: bold; color: #007bff; }
         .description { max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 5px;
+            width: 400px;
+            max-width: 90%;
+        }
+        .modal-header {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .modal-textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 14px;
+            min-height: 80px;
+            resize: vertical;
+        }
+        .modal-buttons {
+            text-align: right;
+            margin-top: 15px;
+        }
+        .modal-btn {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .modal-btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .modal-btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .modal-btn:hover {
+            opacity: 0.8;
+        }
+        .modal-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
     </style>
     <script>
         // Define executeCommand function globally in head to ensure it's available before buttons
@@ -156,6 +234,133 @@ def _generate_product_list_html(data: Dict[str, Any]) -> str:
             }
         };
 
+        // Show modal dialog for input
+        function showInputModal(title, fieldName, currentValue, promptTemplate, isTextarea = false) {
+            // Create modal if it doesn't exist
+            let modal = document.getElementById('inputModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'inputModal';
+                modal.className = 'modal';
+                document.body.appendChild(modal);
+            }
+
+            const inputType = isTextarea ? 'textarea' : 'input';
+            const inputClass = isTextarea ? 'modal-textarea' : 'modal-input';
+            
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">${title}</div>
+                    <label class="modal-label">${fieldName}:</label>
+                    ${isTextarea ? 
+                        `<textarea id="modalInput" class="${inputClass}" placeholder="内容を入力してください...">${currentValue || ''}</textarea>` :
+                        `<input type="text" id="modalInput" class="${inputClass}" value="${currentValue || ''}" placeholder="値を入力してください...">`
+                    }
+                    <div class="modal-buttons">
+                        <button class="modal-btn modal-btn-secondary" onclick="closeModal()">キャンセル</button>
+                        <button class="modal-btn modal-btn-primary" onclick="confirmInput('${promptTemplate}')">確定</button>
+                    </div>
+                </div>
+            `;
+
+            modal.style.display = 'block';
+            
+            // Focus on input and select text
+            setTimeout(() => {
+                const input = document.getElementById('modalInput');
+                input.focus();
+                if (!isTextarea) {
+                    input.select();
+                }
+            }, 100);
+
+            // Close modal when clicking outside
+            modal.onclick = function(event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            };
+
+            // Handle Enter key for input (not textarea)
+            if (!isTextarea) {
+                document.getElementById('modalInput').onkeypress = function(event) {
+                    if (event.key === 'Enter') {
+                        confirmInput(promptTemplate);
+                    }
+                };
+            }
+
+            // Handle Escape key
+            document.onkeydown = function(event) {
+                if (event.key === 'Escape') {
+                    closeModal();
+                }
+            };
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('inputModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            document.onkeydown = null;
+        }
+
+        function confirmInput(promptTemplate) {
+            const input = document.getElementById('modalInput');
+            const value = input.value.trim();
+            
+            if (!value) {
+                alert('値を入力してください');
+                input.focus();
+                return;
+            }
+
+            // Replace placeholder in prompt template with user input
+            const command = promptTemplate.replace('{VALUE}', value);
+            
+            closeModal();
+            executeCommand(command);
+        }
+
+        // Edit functions for different fields
+        function editCategory(jancode, currentValue) {
+            showInputModal(
+                'カテゴリー変更',
+                'カテゴリー名',
+                currentValue,
+                `JANコード${jancode}の商品のカテゴリーを{VALUE}に設定してください`
+            );
+        }
+
+        function editInventory(jancode, currentValue) {
+            showInputModal(
+                '在庫変更',
+                '在庫数',
+                currentValue,
+                `JANコード${jancode}の商品の在庫を{VALUE}に更新してください`
+            );
+        }
+
+        function editPrice(jancode, currentValue) {
+            showInputModal(
+                '価格変更',
+                '価格（円）',
+                currentValue,
+                `JANコード${jancode}の商品の価格を{VALUE}円に設定してください`
+            );
+        }
+
+        function editDescription(jancode, currentValue) {
+            showInputModal(
+                '商品説明変更',
+                '商品説明',
+                currentValue,
+                `JANコード${jancode}の商品の説明を「{VALUE}」に設定してください`,
+                true // Use textarea
+            );
+        }
+
         // Also define as global function for compatibility
         function executeCommand(command) {
             return window.executeCommand(command);
@@ -208,22 +413,26 @@ def _generate_product_list_html(data: Dict[str, Any]) -> str:
         error_html = f"<br><span class='error'>{', '.join(error_messages)}</span>" if error_messages else ""
 
         jancode = product.get('jancode', '')
+        category = product.get('category', '')
+        stock = product.get('stock', 0)
+        description_for_js = description.replace('"', '&quot;').replace("'", "&#39;")
+        
         html += f"""
                 <tr>
                     <td>{jancode}</td>
                     <td>{product.get('name_jp', '')}</td>
-                    <td>{product.get('category', '未設定')}</td>
+                    <td>{category or '未設定'}</td>
                     <td class="price">{price_display}</td>
-                    <td>{product.get('stock', 0)}</td>
+                    <td>{stock}</td>
                     <td class="description" title="{description}">{description_display or '未設定'}</td>
                     <td class="{status_class}">{status_text}{error_html}</td>
                     <td>
                         <button class="btn btn-publish" {publish_disabled} onclick="executeCommand('JANコード{jancode}の商品を棚上げしてください')">上架</button>
                         <button class="btn btn-unpublish" onclick="executeCommand('JANコード{jancode}の商品を棚下げしてください')">下架</button>
-                        <button class="btn btn-edit" onclick="executeCommand('JANコード{jancode}の商品のカテゴリーを設定してください')">カテゴリー</button>
-                        <button class="btn btn-edit" onclick="executeCommand('JANコード{jancode}の商品の在庫を更新してください')">在庫</button>
-                        <button class="btn btn-edit" onclick="executeCommand('JANコード{jancode}の商品の価格を設定してください')">価格</button>
-                        <button class="btn btn-edit" onclick="executeCommand('JANコード{jancode}の商品の説明を設定してください')">説明</button>
+                        <button class="btn btn-edit-category" onclick="editCategory('{jancode}', '{category}')">カテゴリー</button>
+                        <button class="btn btn-edit-inventory" onclick="editInventory('{jancode}', '{stock}')">在庫</button>
+                        <button class="btn btn-edit-price" onclick="editPrice('{jancode}', '{price}')">価格</button>
+                        <button class="btn btn-edit-description" onclick="editDescription('{jancode}', '{description_for_js}')">説明</button>
                     </td>
                 </tr>
         """

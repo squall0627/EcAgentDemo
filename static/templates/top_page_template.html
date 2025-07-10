@@ -240,9 +240,11 @@
                         if (conv.user_message) {
                             addMessage('user', conv.user_message, false, null, conv.created_at, conv.id);
                         }
-                        // エージェントレスポンスを追加
+                        // エージェントレスポンスを追加（JSON処理を適用）
                         if (conv.agent_response) {
-                            addMessage('assistant', conv.agent_response, false, conv.trace_id, conv.created_at, conv.id);
+                            // 履歴復元時もJSON処理を適用
+                            const formattedResponse = formatAiResponse(conv.agent_response);
+                            addMessage('assistant', formattedResponse, false, conv.trace_id, conv.created_at, conv.id);
                         }
                     });
 
@@ -278,9 +280,11 @@
                         if (conv.user_message) {
                             addMessage('user', conv.user_message, false, null, conv.created_at, conv.id);
                         }
-                        // エージェントレスポンスを追加
+                        // エージェントレスポンスを追加（JSON処理を適用）
                         if (conv.agent_response) {
-                            addMessage('assistant', conv.agent_response, false, conv.trace_id, conv.created_at, conv.id);
+                            // 履歴復元時もJSON処理を適用
+                            const formattedResponse = formatAiResponse(conv.agent_response);
+                            addMessage('assistant', formattedResponse, false, conv.trace_id, conv.created_at, conv.id);
                         }
                     });
 
@@ -400,7 +404,8 @@
             if (data.error_message) {
                 displayContent = formatErrorMessage(data.error_message);
             } else if (data.response) {
-                displayContent = data.response;
+                // レスポンスがJSONかどうかを判定して処理
+                displayContent = formatAiResponse(data.response);
             } else {
                 displayContent = 'エラーが発生しました';
             }
@@ -411,6 +416,98 @@
                 traceId: data.trace_id,
                 hasError: !!data.error_message
             };
+        }
+
+        // AI回答のJSONレスポンスをフォーマットする関数
+        function formatAiResponse(response) {
+            try {
+                // JSONかどうかを判定
+                let jsonData;
+                if (typeof response === 'string') {
+                    // 文字列の場合、JSONとしてパースを試行
+                    jsonData = JSON.parse(response);
+                } else if (typeof response === 'object') {
+                    // すでにオブジェクトの場合はそのまま使用
+                    jsonData = response;
+                } else {
+                    // その他の場合は通常のテキストとして処理
+                    return response;
+                }
+
+                // 必要なプロパティが存在するかチェック
+                if (jsonData && (jsonData.html_content !== undefined || jsonData.error !== undefined || jsonData.next_actions !== undefined)) {
+                    return formatStructuredResponse(jsonData);
+                } else {
+                    // 構造化されたレスポンスでない場合は元の形式で返す
+                    return response;
+                }
+            } catch (e) {
+                // JSONパースに失敗した場合は通常のテキストとして処理
+                return response;
+            }
+        }
+
+        // 構造化されたAI回答をフォーマットする関数
+        function formatStructuredResponse(jsonData) {
+            let html = '<div class="ai-response-container">';
+
+            // エラーがある場合はエラー表示のみ
+            if (jsonData.error && jsonData.error.trim() !== '') {
+                html += `
+                    <div class="ai-error-display">
+                        <span class="error-icon">⚠️</span>
+                        <strong>エラー:</strong> ${jsonData.error}
+                    </div>
+                `;
+            }
+
+            // html_contentを表示
+            if (jsonData.html_content && jsonData.html_content.trim() !== '') {
+                html += `
+                    <div class="ai-html-content">
+                        ${jsonData.html_content}
+                    </div>
+                `;
+            }
+
+            // next_actionsを表示
+            if (jsonData.next_actions && Array.isArray(jsonData.next_actions) && jsonData.next_actions.length > 0) {
+                html += `
+                    <div class="ai-next-actions">
+                        <div class="ai-next-actions-title">
+                            <span>💡</span>
+                            次のアクション
+                        </div>
+                        <ul class="ai-next-actions-list">
+                `;
+
+                jsonData.next_actions.forEach((action, index) => {
+                    if (action && action.trim() !== '') {
+                        html += `<li class="ai-next-actions-item"><button class="ai-next-action-link" onclick="copyActionToInput('${action.replace(/'/g, "\\'")}')">${action}</button></li>`;
+                    }
+                });
+
+                html += `
+                        </ul>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        // next_actionのテキストを入力欄にコピーする関数
+        function copyActionToInput(actionText) {
+            const input = document.getElementById('commandInput');
+            input.value = actionText;
+            input.focus();
+
+            // テキストエリアのサイズを調整
+            autoResize(input);
+
+            // 通知を表示
+            showNotification('アクションテキストを入力欄にコピーしました', 'success');
         }
 
         // エラーメッセージを特別な形式でフォーマット

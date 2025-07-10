@@ -11,7 +11,7 @@ from ai_agents.product_center.tools.product_tools import (
     UpdateCategoryTool,
     BulkUpdateStockTool,
     BulkUpdatePriceTool,
-    search_products_tool
+    SearchProductsTool
 )
 
 
@@ -40,7 +40,7 @@ class ProductDetailAgent(BaseAgent):
     def _initialize_tools(self) -> List[Any]:
         """商品詳細情報管理固有のツールを初期化"""
         return [
-            search_products_tool,
+            SearchProductsTool(),
             UpdateStockTool(),
             UpdatePriceTool(),
             UpdateDescriptionTool(),

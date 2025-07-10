@@ -8,7 +8,7 @@ from ai_agents.product_center.tools.product_tools import (
     ValidateCanPublishProductTool,
     PublishProductsTool,
     UnpublishProductsTool,
-    search_products_tool
+    SearchProductsTool
 )
 
 
@@ -37,7 +37,7 @@ class ProductPublishAgent(BaseAgent):
     def _initialize_tools(self) -> List[Any]:
         """商品棚上げ・棚下げ管理固有のツールを初期化"""
         return [
-            search_products_tool,
+            SearchProductsTool(),
             ValidateCanPublishProductTool(),
             PublishProductsTool(),
             UnpublishProductsTool(),

@@ -183,7 +183,7 @@ class BaseAgent(ABC):
         # 会話履歴コンテキストをシステムメッセージに追加
         if state.get("conversation_context"):
             context_summary = self._format_context_for_system_message(state["conversation_context"])
-            sys_msg_content += f"\n\n## 会話履歴コンテキスト:\n{context_summary}"
+            sys_msg_content += f"\n\n## Conversation history context:\n{context_summary}"
 
         sys_msg = SystemMessage(content=sys_msg_content)
 

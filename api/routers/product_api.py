@@ -407,6 +407,15 @@ def validate_product_for_publish(jancode: str, db: Session = Depends(get_db)):
     
     issues = []
     
+    # 既に公開済みかチェック
+    if product.status == "published":
+        issues.append({
+            "type": "status",
+            "message": "商品は既に公開済みです",
+            "field": "status",
+            "current_value": product.status
+        })
+    
     # カテゴリーチェック
     if not product.category or product.category.strip() == "":
         issues.append({

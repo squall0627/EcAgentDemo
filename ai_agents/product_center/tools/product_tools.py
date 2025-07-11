@@ -55,7 +55,7 @@ class BulkPriceUpdateInput(BaseModel):
     products: List[Dict[str, Any]] = Field(description="一括価格更新のリスト")
 
 class ValidateProductInput(BaseModel):
-    jancode: str = Field(description="検証する商品のJANコード")
+    jancode: str = Field(description="JAN code of the product to validate for publishing eligibility")
 
 class GenerateHtmlInput(BaseModel):
     page_type: str = Field(description="""Page types to generate:
@@ -68,10 +68,10 @@ class GenerateHtmlInput(BaseModel):
     data: Optional[Dict[str, Any]] = Field(default=None, description="Data required for page generation")
 
 class PublishProductsInput(BaseModel):
-    jancodes: List[str] = Field(description="棚上げする商品のJANコードリスト")
+    jancodes: List[str] = Field(description="List of JAN codes for products to be published (made available for sale)")
 
 class UnpublishProductsInput(BaseModel):
-    jancodes: List[str] = Field(description="棚下げする商品のJANコードリスト")
+    jancodes: List[str] = Field(description="List of JAN codes for products to be unpublished (removed from sale)")
 
 class SearchProductsTool(BaseTool):
     name: str = "search_products"
@@ -309,7 +309,36 @@ class BulkUpdatePriceTool(BaseTool):
 
 class ValidateCanPublishProductTool(BaseTool):
     name: str = "validate_can_publish_product"
-    description: str = "商品を棚上げ操作する前に、棚上げできるかをチェックするツール。"
+    description: str = """Product Publishing Validation Tool
+This tool validates whether a product meets all the required conditions to be published (棚上げ) to the online store.
+
+## Core Features
+- Comprehensive product validation checks before publishing
+- Category validation (ensures product has assigned category)
+- Stock quantity validation (ensures stock > 0)
+- Price validation (ensures price is set and > 0)
+- Detailed issue reporting with specific validation failures
+- Product information retrieval with current status
+
+## Validation Rules
+- **Status Check**: Product must not be already published (status should be 'unpublished' or Not set)
+- **Category Check**: Product must have a valid category assigned
+- **Stock Check**: Product must have stock quantity greater than 0
+- **Price Check**: Product must have a valid price set (> 0)
+
+## Usage Examples
+- "JAN『4901234567890』の商品が棚上げできるかチェック" → jancode="4901234567890"
+- "商品ABC123を販売開始前に検証" → jancode="ABC123"
+- "この商品を公開前に条件確認" → jancode="[specific_jancode]"
+
+## Return Format
+Returns JSON structured validation results including:
+- `valid`: Boolean indicating if product can be published
+- `product`: Complete product information
+- `issues`: Array of specific validation failures with details
+- `jancode`: The validated product's JAN code
+
+Use this tool before attempting to publish products to ensure all prerequisites are met."""
     args_schema: Type[BaseModel] = ValidateProductInput
 
     def _run(self, jancode: str) -> str:
@@ -324,21 +353,21 @@ class ValidateCanPublishProductTool(BaseTool):
             elif response.status_code == 404:
                 return json.dumps({
                     "valid": False,
-                    "error": "商品が見つかりません",
+                    "issues": "商品が見つかりません",
                     "jancode": jancode
                 }, ensure_ascii=False)
             else:
                 error_detail = response.json().get("detail", response.text)
                 return json.dumps({
                     "valid": False,
-                    "error": f"バリデーションAPI呼び出しエラー: {error_detail}",
+                    "issues": f"バリデーションAPI呼び出しエラー: {error_detail}",
                     "jancode": jancode
                 }, ensure_ascii=False)
 
         except Exception as e:
             return json.dumps({
                 "valid": False,
-                "error": f"バリデーションエラー: {str(e)}",
+                "issues": f"バリデーションエラー: {str(e)}",
                 "jancode": jancode
             }, ensure_ascii=False)
 
@@ -526,7 +555,46 @@ page_type:
 
 class PublishProductsTool(BaseTool):
     name: str = "publish_products"
-    description: str = "商品を棚上げ（公開）します"
+    description: str = """Product Publishing Tool
+This tool publishes products to make them available for sale on the online store (棚上げ operation).
+
+## Core Features
+- Publish single or multiple products simultaneously
+- Batch publishing operation for efficiency
+- Status change from 'unpublished' to 'published'
+- Comprehensive error handling for failed operations
+- Detailed operation results reporting
+
+## Prerequisites
+- Products must exist in the system
+- Products should pass validation checks (use ValidateCanPublishProductTool first)
+- Products must have valid category, stock > 0, and price > 0
+
+## Usage Examples
+- "JAN『4901234567890』を棚上げして" → jancodes=["4901234567890"]
+- "コーヒー商品を一括で棚上げ" → jancodes=["123456789", "987654321", ...]
+- "商品ABC123とXYZ789を販売開始" → jancodes=["ABC123", "XYZ789"]
+- "在庫のある商品をすべて棚上げ" → jancodes=[list_of_valid_jancodes]
+
+## Operation Flow
+1. Validate input JAN codes
+2. Check current product status
+3. Execute publish operation
+4. Update product status to 'published'
+5. Return operation results
+
+## Return Format
+Returns JSON structured results with the following fields:
+- success: Boolean indicating overall operation success
+- message: Summary message of the operation
+- published_count: Number of successfully published products
+- results: Array of individual product operation results
+  - jancode: Product's JAN code
+  - status: Individual operation status (success/error)
+  - message: Specific operation message for this product
+  - product_name: Name of the product (may be null)
+
+Use this tool after validating products to make them available for customer purchase."""
     args_schema: Type[BaseModel] = PublishProductsInput
 
     def _run(self, jancodes: List[str]) -> str:
@@ -537,20 +605,116 @@ class PublishProductsTool(BaseTool):
             )
 
             if response.status_code == 200:
-                return json.dumps(response.json(), ensure_ascii=False, indent=2)
+                api_result = response.json()
+                
+                updated_jancodes = api_result.get('updated', [])
+                errors = api_result.get('errors', [])
+                
+                # Create individual results for each jancode
+                results = []
+                for jancode in jancodes:
+                    if jancode in updated_jancodes:
+                        results.append({
+                            "jancode": jancode,
+                            "status": "success",
+                            "message": "商品が正常に棚上げされました",
+                            "product_name": None  # API doesn't return product names
+                        })
+                    else:
+                        # Find specific error message for this jancode
+                        error_msg = "棚上げ処理に失敗しました"
+                        for error in errors:
+                            if jancode in error:
+                                error_msg = error
+                                break
+                        results.append({
+                            "jancode": jancode,
+                            "status": "error",
+                            "message": error_msg,
+                            "product_name": None
+                        })
+                
+                published_count = len(updated_jancodes)
+                overall_success = published_count > 0
+                
+                return json.dumps({
+                    "success": overall_success,
+                    "message": f"棚上げ処理が完了しました（成功: {published_count}件、失敗: {len(errors)}件）",
+                    "published_count": published_count,
+                    "results": results
+                }, ensure_ascii=False, indent=2)
             else:
                 return json.dumps({
-                    "error": f"棚上げAPIエラー: {response.status_code}",
-                    "detail": response.text
-                }, ensure_ascii=False)
+                    "success": False,
+                    "message": f"棚上げAPIエラー（ステータス: {response.status_code}）",
+                    "published_count": 0,
+                    "results": [
+                        {
+                            "jancode": jancode,
+                            "status": "error",
+                            "message": f"APIエラー: {response.status_code}",
+                            "product_name": None
+                        } for jancode in jancodes
+                    ]
+                }, ensure_ascii=False, indent=2)
         except Exception as e:
             return json.dumps({
-                "error": f"棚上げエラー: {str(e)}"
-            }, ensure_ascii=False)
+                "success": False,
+                "message": f"棚上げ処理で予期しないエラーが発生しました: {str(e)}",
+                "published_count": 0,
+                "results": [
+                    {
+                        "jancode": jancode,
+                        "status": "error",
+                        "message": f"システムエラー: {str(e)}",
+                        "product_name": None
+                    } for jancode in jancodes
+                ]
+            }, ensure_ascii=False, indent=2)
 
 class UnpublishProductsTool(BaseTool):
     name: str = "unpublish_products"
-    description: str = "商品を棚下げ（非公開）します"
+    description: str = """Product Unpublishing Tool
+This tool unpublishes products to remove them from sale on the online store (棚下げ operation).
+
+## Core Features
+- Unpublish single or multiple products simultaneously
+- Batch unpublishing operation for efficiency
+- Status change from 'published' to 'unpublished'
+- Comprehensive error handling for failed operations
+- Detailed operation results reporting
+
+## Use Cases
+- Remove out-of-stock products from sale
+- Temporarily hide products during updates
+- Discontinue products that are no longer available
+- Emergency removal of problematic products
+- Seasonal product management
+
+## Usage Examples
+- "JAN『4901234567890』を棚下げして" → jancodes=["4901234567890"]
+- "在庫不足の商品をすべて棚下げ" → jancodes=["123456789", "987654321", ...]
+- "商品ABC123を販売停止" → jancodes=["ABC123"]
+- "エラーのある商品を一括で棚下げ" → jancodes=[list_of_problematic_jancodes]
+
+## Operation Flow
+1. Validate input JAN codes
+2. Check current product status, only products that are currently published can be unpublish(You should check the latest status before using this tool)
+3. Execute unpublish operation
+4. Return operation results
+
+## Return Format
+Returns JSON structured results with the following fields:
+- success: Boolean indicating overall operation success
+- message: Summary message of the operation
+- unpublished_count: Number of successfully unpublished products
+- results: Array of individual product operation results
+  - jancode: Product's JAN code
+  - status: Individual operation status (success/error)
+  - message: Specific operation message for this product
+  - product_name: Name of the product (may be null)
+
+Use this tool when products need to be temporarily or permanently removed from customer-facing sales."""
     args_schema: Type[BaseModel] = UnpublishProductsInput
 
     def _run(self, jancodes: List[str]) -> str:
@@ -561,13 +725,63 @@ class UnpublishProductsTool(BaseTool):
             )
 
             if response.status_code == 200:
-                return json.dumps(response.json(), ensure_ascii=False, indent=2)
+                api_result = response.json()
+                
+                updated_jancodes = api_result.get('updated', [])
+                api_message = api_result.get('message', '')
+                
+                # Create individual results for each jancode
+                results = []
+                for jancode in jancodes:
+                    if jancode in updated_jancodes:
+                        results.append({
+                            "jancode": jancode,
+                            "status": "success",
+                            "message": "商品が正常に棚下げされました",
+                            "product_name": None  # API doesn't return product names
+                        })
+                    else:
+                        results.append({
+                            "jancode": jancode,
+                            "status": "error",
+                            "message": "棚下げ処理に失敗しました",
+                            "product_name": None
+                        })
+                
+                unpublished_count = len(updated_jancodes)
+                overall_success = unpublished_count > 0
+                
+                return json.dumps({
+                    "success": overall_success,
+                    "message": f"棚下げ処理が完了しました（成功: {unpublished_count}件）",
+                    "unpublished_count": unpublished_count,
+                    "results": results
+                }, ensure_ascii=False, indent=2)
             else:
                 return json.dumps({
-                    "error": f"棚下げAPIエラー: {response.status_code}",
-                    "detail": response.text
-                }, ensure_ascii=False)
+                    "success": False,
+                    "message": f"棚下げAPIエラー（ステータス: {response.status_code}）",
+                    "unpublished_count": 0,
+                    "results": [
+                        {
+                            "jancode": jancode,
+                            "status": "error",
+                            "message": f"APIエラー: {response.status_code}",
+                            "product_name": None
+                        } for jancode in jancodes
+                    ]
+                }, ensure_ascii=False, indent=2)
         except Exception as e:
             return json.dumps({
-                "error": f"棚下げエラー: {str(e)}"
-            }, ensure_ascii=False)
+                "success": False,
+                "message": f"棚下げ処理で予期しないエラーが発生しました: {str(e)}",
+                "unpublished_count": 0,
+                "results": [
+                    {
+                        "jancode": jancode,
+                        "status": "error",
+                        "message": f"システムエラー: {str(e)}",
+                        "product_name": None
+                    } for jancode in jancodes
+                ]
+            }, ensure_ascii=False, indent=2)

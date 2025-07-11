@@ -919,6 +919,9 @@
 
                 const data = await response.json();
 
+                // レスポンスを処理（sendMessageと同じ処理を適用）
+                const processedResponse = await handleApiResponse(data);
+
                 // ローディングを削除
                 loadingMessageDiv.remove();
 
@@ -942,18 +945,8 @@
                 // タイムスタンプを追加
                 let contentHTML = `<div class="message-timestamp">${new Date().toLocaleString('ja-JP')}</div>`;
 
-                // マークダウン風の簡単な変換
-                let responseContent = data.response || '再生成に失敗しました';
-                let formattedContent;
-                if (responseContent.includes('ai-html-content') || responseContent.includes('ai-response-container')) {
-                    // HTML content (structured response) の場合はそのまま表示（newline to br conversion を適用しない）
-                    formattedContent = responseContent;
-                } else {
-                    formattedContent = responseContent
-                        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-                        .replace(/`([^`]+)`/g, '<code>$1</code>')
-                        .replace(/\n/g, '<br>');
-                }
+                // 処理済みのコンテンツを使用
+                let formattedContent = processedResponse.content || '再生成に失敗しました';
 
                 contentHTML += `<div class="message-text">${formattedContent}</div>`;
                 newContentDiv.innerHTML = contentHTML;
@@ -969,7 +962,7 @@
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'action-btn copy';
                 copyBtn.innerHTML = '📋 コピー';
-                copyBtn.onclick = () => copyMessage(data.response || '再生成に失敗しました');
+                copyBtn.onclick = () => copyMessage(processedResponse.content || '再生成に失敗しました');
 
                 // 再生成ボタン
                 const regenerateBtn = document.createElement('button');

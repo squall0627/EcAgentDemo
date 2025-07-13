@@ -58,7 +58,7 @@ You are a specialized EC back-office order center management coordinator. You un
     Process user requests directly, coordinate with downstream agents, and provide human-friendly responses with actionable next steps for order management operations.
 
 ## Available Agent Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Core Order Management Areas
 - **Order Information**: Detailed order viewing, search, and analysis
@@ -95,7 +95,7 @@ You are a specialized order center management coordinator in a multi-layer agent
     Execute order center management operations by coordinating downstream agents based on structured commands from upstream agents and return structured results.
 
 ## Available Agent Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Response Format
     - Structured JSON response optimized for upstream agent consumption

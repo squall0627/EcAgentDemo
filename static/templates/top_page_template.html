@@ -508,31 +508,100 @@
                 `;
             }
 
-            // next_actionsを表示
-            if (jsonData.next_actions && Array.isArray(jsonData.next_actions) && jsonData.next_actions.length > 0) {
+            // その他のプロパティを表示（error、html_content、next_actions以外）
+            const handledProperties = ['error', 'html_content', 'next_actions'];
+            const otherProperties = Object.keys(jsonData).filter(key => !handledProperties.includes(key));
+
+            if (otherProperties.length > 0) {
                 html += `
-                    <div class="ai-next-actions">
-                        <div class="ai-next-actions-title">
-                            <span>💡</span>
-                            次のアクション
-                        </div>
-                        <ul class="ai-next-actions-list">
+                    <div class="ai-other-properties">
+                        <div class="ai-other-properties-content">
                 `;
 
-                jsonData.next_actions.forEach((action, index) => {
-                    if (action && action.trim() !== '') {
-                        html += `<li class="ai-next-actions-item"><button class="ai-next-action-link" onclick="copyActionToInput('${action.replace(/'/g, "\\'")}')">${action}</button></li>`;
+                otherProperties.forEach(key => {
+                    const value = jsonData[key];
+                    if (value !== null && value !== undefined && value !== '') {
+                        html += `
+                            <div class="ai-property-item">
+                                <div class="ai-property-key">${key}:</div>
+                                <div class="ai-property-value">${formatPropertyValue(value)}</div>
+                            </div>
+                        `;
                     }
                 });
 
                 html += `
-                        </ul>
+                        </div>
                     </div>
                 `;
             }
 
+            // next_actionsを表示
+            if (jsonData.next_actions) {
+                // next_actionsが文字列の場合は配列に変換
+                let actionsArray = [];
+                if (typeof jsonData.next_actions === 'string' && jsonData.next_actions.trim() !== '') {
+                    actionsArray = [jsonData.next_actions];
+                } else if (Array.isArray(jsonData.next_actions) && jsonData.next_actions.length > 0) {
+                    actionsArray = jsonData.next_actions;
+                }
+
+                if (actionsArray.length > 0) {
+                    html += `
+                        <div class="ai-next-actions">
+                            <div class="ai-next-actions-title">
+                                <span>💡</span>
+                                次のアクション
+                            </div>
+                            <ul class="ai-next-actions-list">
+                    `;
+
+                    actionsArray.forEach((action, index) => {
+                        if (action && action.trim() !== '') {
+                            html += `<li class="ai-next-actions-item"><button class="ai-next-action-link" onclick="copyActionToInput('${action.replace(/'/g, "\\'")}')">${action}</button></li>`;
+                        }
+                    });
+
+                    html += `
+                            </ul>
+                        </div>
+                    `;
+                }
+            }
+
             html += '</div>';
             return html;
+        }
+
+        // プロパティ値をフォーマットする関数
+        function formatPropertyValue(value) {
+            if (typeof value === 'object') {
+                if (Array.isArray(value)) {
+                    // 配列の場合
+                    if (value.length === 0) return '[]';
+                    return '<ul class="ai-property-array">' + 
+                           value.map(item => `<li>${formatPropertyValue(item)}</li>`).join('') + 
+                           '</ul>';
+                } else {
+                    // オブジェクトの場合
+                    if (Object.keys(value).length === 0) return '{}';
+                    let objHtml = '<div class="ai-property-object">';
+                    Object.keys(value).forEach(key => {
+                        objHtml += `<div class="ai-property-object-item">
+                                      <span class="ai-property-object-key">${key}:</span>
+                                      <span class="ai-property-object-value">${formatPropertyValue(value[key])}</span>
+                                    </div>`;
+                    });
+                    objHtml += '</div>';
+                    return objHtml;
+                }
+            } else if (typeof value === 'string') {
+                // 文字列の場合、改行を<br>に変換
+                return value.replace(/\n/g, '<br>');
+            } else {
+                // その他の場合（数値、真偽値など）
+                return String(value);
+            }
         }
 
         // next_actionのテキストを入力欄にコピーする関数

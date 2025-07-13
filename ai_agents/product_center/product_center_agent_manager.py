@@ -2,6 +2,7 @@ from ai_agents.base_agent import BaseAgent
 from ai_agents.intelligent_agent_router import AgentCapability
 from ai_agents.product_center.tools.product_detail_agent_tool import ProductDetailAgentTool
 from ai_agents.product_center.tools.product_publish_agent_tool import ProductPublishAgentTool
+from ai_agents.product_center.tools.product_tools import GenerateHtmlTool
 
 
 class ProductCenterAgentManager(BaseAgent):
@@ -26,7 +27,8 @@ class ProductCenterAgentManager(BaseAgent):
                                        use_langfuse=self.langfuse_handler.use_langfuse),
                 ProductPublishAgentTool(api_key=self.api_key,
                                         llm_type=self.llm_type,
-                                        use_langfuse=self.langfuse_handler.use_langfuse)]
+                                        use_langfuse=self.langfuse_handler.use_langfuse),
+                GenerateHtmlTool(),]
 
     def _get_system_message_content(self, is_entry_agent: bool = False) -> str:
         """ProductCenterAgentManager system message content (dynamic generation)"""
@@ -37,16 +39,14 @@ class ProductCenterAgentManager(BaseAgent):
 You are a specialized EC back-office product center management coordinator. You understand natural language commands from administrators and coordinate comprehensive product management functionality across multiple specialized agents while maximizing conversation history utilization.
 
 ## Your Purpose
-    Process user requests directly, coordinate with downstream agents, and provide human-friendly responses with actionable next steps.
-
-## Available Agent Tools
-{self._generate_tool_descriptions()}
+    Process user requests directly, coordinate with downstream agents, and return structured JSON responses with actionable next steps.
 
 ## Response Format
     - Structured JSON response
     - Include "html_content" field for direct screen rendering when needed
     - Include "error" field for error messages in Japanese
     - Include "next_actions" field for suggested next steps (considering conversation history)
+        * Type: string (single action) OR array of strings (multiple actions)
 
 ## Conversation History Usage
     - **Continuity**: Remember previous operations and search results for informed decision-making
@@ -64,9 +64,6 @@ You are a specialized product center management coordinator in a multi-layer age
 
 ## Your Purpose
     Execute product center management operations by coordinating downstream agents based on structured commands from upstream agents and return structured results.
-
-## Available Agent Tools
-{self._generate_tool_descriptions()}
 
 ## Response Format
     - Structured JSON response optimized for upstream agent consumption

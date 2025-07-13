@@ -282,9 +282,15 @@ class BaseAgent(ABC):
 
                     # ツールを実行
                     tool_response = tool_instance.invoke(tool_args)
+                    print(f"🔧 Tool '{tool_name}' response type: {type(tool_response)}")
+                    print(f"🔧 Tool '{tool_name}' invoked with args: {tool_args}, original response: {tool_response}")
                     if isinstance(tool_instance, BaseAgentTool):
-                        tool_response = tool_response["messages"][-1].content if tool_response[
-                            "messages"] else f"⚠️ [{tool_name}]処理が完了しました。結果なし。"  # BaseAgentToolの場合は最後のメッセージを取得
+                        if isinstance(tool_response, dict):
+                            tool_response = tool_response["messages"][-1].content if tool_response[
+                                "messages"] else f"⚠️ [{tool_name}]処理が完了しました。結果なし。"  # BaseAgentToolの場合は最後のメッセージを取得
+                        else:
+                            tool_response = str(tool_response)
+                        print(f"🔧 Tool '{tool_name}' parsed response: {tool_response}")
 
                     # ツールの実行結果をToolMessageとして作成
                     tool_message = ToolMessage(
@@ -640,7 +646,7 @@ class BaseAgent(ABC):
 
         return _execute_workflow()
 
-    def _generate_tool_descriptions(self) -> str:
+    def generate_tool_descriptions(self) -> str:
         """Generate dynamic tool descriptions from bound tools"""
         if not hasattr(self, 'tools') or not self.tools:
             return "    No tools available"
@@ -651,8 +657,50 @@ class BaseAgent(ABC):
             tool_name = getattr(tool, 'name', 'Unknown Tool')
             tool_description = getattr(tool, 'description', 'No description available')
 
-            # Format as requested: 1. **tool_name**: description
-            descriptions.append(f"    {i}. **{tool_name}**: {tool_description}")
+            # Start with basic tool info
+            tool_info = f"    {i}. **{tool_name}**: {tool_description}"
+            
+            # Add parameter information if available
+            if hasattr(tool, 'args_schema') and tool.args_schema:
+                try:
+                    # Get field information from Pydantic model
+                    if hasattr(tool.args_schema, 'model_fields'):
+                        # Pydantic v2
+                        fields = tool.args_schema.model_fields
+                    elif hasattr(tool.args_schema, '__fields__'):
+                        # Pydantic v1
+                        fields = tool.args_schema.__fields__
+                    else:
+                        fields = {}
+                    
+                    if fields:
+                        tool_info += "\n       Parameters:"
+                        for field_name, field_info in fields.items():
+                            # Extract field description and type
+                            if hasattr(field_info, 'description'):
+                                # Pydantic v2
+                                field_desc = field_info.description or "No description"
+                                field_type = getattr(field_info, 'annotation', 'Any')
+                            elif hasattr(field_info, 'field_info'):
+                                # Pydantic v1
+                                field_desc = field_info.field_info.description or "No description"
+                                field_type = field_info.type_
+                            else:
+                                field_desc = "No description"
+                                field_type = "Any"
+                            
+                            # Format field type for display
+                            if hasattr(field_type, '__name__'):
+                                type_name = field_type.__name__
+                            else:
+                                type_name = str(field_type)
+                            
+                            tool_info += f"\n         - {field_name} ({type_name}): {field_desc}"
+                except Exception as e:
+                    # If parameter extraction fails, just show basic info
+                    tool_info += f"\n       Parameters: (Error extracting parameter info: {str(e)})"
+            
+            descriptions.append(tool_info)
 
         return "\n".join(descriptions)
 
@@ -664,7 +712,7 @@ class BaseAgent(ABC):
             AgentCapability: 合併後の能力オブジェクト
         """
         # ツール説明を取得
-        description = self._generate_tool_descriptions()
+        description = self.generate_tool_descriptions()
 
         # 全ての下流Agentの能力情報を収集
         all_primary_domains = []

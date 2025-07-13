@@ -61,7 +61,7 @@ Process user requests for order item modifications, guide through the modificati
 - **Order Recreation**: Handle complex modifications by creating new orders when necessary
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Modification Process Guidelines
 1. **Analyze Current Order**: Always retrieve current order details first
@@ -94,7 +94,7 @@ You are a specialized order item modification agent in a multi-layer agent syste
 Execute order item modification operations based on structured commands from upstream agents and return structured results.
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Response Format
 - Structured JSON response optimized for upstream agent consumption

@@ -160,6 +160,7 @@ async def single_agent_chat(request: ChatRequest):
         llm_type = getattr(request, 'llm_type', 'ollama')
         agent_type = getattr(request, 'agent_type', None)
 
+        print(f"🔍 単一エージェントチャットリクエスト: {request.message}, LLM: {llm_type}, エージェントタイプ: {agent_type}")
         # エージェントを動的に選択
         if agent_type and agent_type != 'AgentDirector':
             # 指定されたエージェントタイプを使用
@@ -174,6 +175,7 @@ async def single_agent_chat(request: ChatRequest):
             # デフォルトエージェントを使用
             agent = get_single_agent(llm_type)
 
+        print(f"🔄 単一エージェントを{agent.agent_name}で初期化しました")
         # コマンドを処理
         response = agent.process_command(
             request.message, 
@@ -183,10 +185,12 @@ async def single_agent_chat(request: ChatRequest):
             is_entry_agent=True,
         )
 
+        print(f"✅ 単一エージェント処理完了: {response}")
         # レスポンス解析と構築
         return _parse_agent_response(response, request)
 
     except Exception as e:
+        print(f"⚠️ 単一エージェント処理中にエラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"単一エージェント処理に失敗しました: {str(e)}")
 
 @router.get("/single-agent/info")
@@ -423,6 +427,13 @@ def _parse_agent_response(response, request: ChatRequest) -> ChatResponse:
             llm_type_used = response.get("llm_type_used", request.llm_type)
             agent_type = response.get("agent_type") or response.get("agent_name")
             next_actions = response.get("next_actions")
+            if isinstance(next_actions, (dict, list)):
+                try:
+                    next_actions = json.dumps(next_actions, ensure_ascii=False)
+                except Exception as e:
+                    print(f"⚠️ next_actions JSON変換エラー: {e}")
+                    next_actions = str(next_actions)
+
             trace_id = response.get("trace_id")
             conversation_id = response.get("conversation_id")
             error_message = response.get("error_message")
@@ -445,6 +456,12 @@ def _parse_agent_response(response, request: ChatRequest) -> ChatResponse:
             llm_type_used = response_data.get("llm_type_used", request.llm_type)
             agent_type = response_data.get("agent_type")
             next_actions = response_data.get("next_actions")
+            if isinstance(next_actions, (dict, list)):
+                try:
+                    next_actions = json.dumps(next_actions, ensure_ascii=False)
+                except Exception as e:
+                    print(f"⚠️ next_actions JSON変換エラー: {e}")
+                    next_actions = str(next_actions)
             trace_id = response_data.get("trace_id")
             conversation_id = response_data.get("conversation_id")
             error_message = response_data.get("error_message")
@@ -456,6 +473,9 @@ def _parse_agent_response(response, request: ChatRequest) -> ChatResponse:
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"⚠️ レスポンス解析エラー: {e}")
         response_message = str(response) if response else "処理が完了しました"
+    except Exception as e:
+        print(f"⚠️ レスポンス処理中に予期しないエラー: {e}")
+        response_message = "処理中にエラーが発生しました"
 
     # trace_idが設定されていない場合、現在のtraceから取得を試行
     if not trace_id and langfuse_handler.is_available():
@@ -467,6 +487,7 @@ def _parse_agent_response(response, request: ChatRequest) -> ChatResponse:
         except Exception as e:
             print(f"⚠️ trace_id取得エラー: {e}")
 
+    print(f"🔄 レスポンス解析完了: {response_message}, trace_id: {trace_id}")
     return ChatResponse(
         response=response_message or "処理が完了しました",
         session_id=request.session_id,

@@ -63,7 +63,7 @@ Process user requests for order status changes, ensure proper status transitions
 - **Workflow Coordination**: Coordinate status changes across different order aspects
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Status Categories and Valid Values
 
@@ -118,7 +118,7 @@ You are a specialized order status management agent in a multi-layer agent syste
 Execute order status change operations based on structured commands from upstream agents and return structured results.
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Response Format
 - Structured JSON response optimized for upstream agent consumption

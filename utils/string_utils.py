@@ -23,6 +23,11 @@ def serialize_state(state: BaseAgentState) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: 序列化可能な辞書
     """
+    # 入力が辞書でない場合は空の辞書を返す
+    if not isinstance(state, dict) or not hasattr(state, 'items'):
+        print(f"⚠️ Input is not a dictionary. Returning empty dictionary.\n{state}")
+        return {}
+
     serialized = {}
 
     for key, value in state.items():
@@ -101,7 +106,18 @@ def deserialize_state(serialized_data: Dict[str, Any], state_class: Type[TypedDi
             elif msg_type == "SystemMessage":
                 messages.append(SystemMessage(content=content))
             elif msg_type == "ToolMessage":
-                messages.append(ToolMessage(content=content, **msg_data.get("additional_kwargs", {})))
+                # ToolMessageには tool_call_id が必須なので、適切に処理する
+                additional_kwargs = msg_data.get("additional_kwargs", {})
+                tool_call_id = additional_kwargs.get("tool_call_id", "unknown_tool_call")
+
+                # tool_call_idを additional_kwargs から除外して、明示的に渡す
+                filtered_kwargs = {k: v for k, v in additional_kwargs.items() if k != "tool_call_id"}
+
+                messages.append(ToolMessage(
+                    content=content, 
+                    tool_call_id=tool_call_id,
+                    **filtered_kwargs
+                ))
             # 他のメッセージタイプも必要に応じて追加
 
         serialized_data["messages"] = messages
@@ -115,12 +131,25 @@ import json
 # 状態を JSON 文字列に変換
 def state_to_json(state: BaseAgentState) -> str:
     """BaseAgentStateをJSON文字列に変換"""
-    serialized = serialize_state(state)
-    return json.dumps(serialized, ensure_ascii=False, indent=2)
+    try:
+        serialized = serialize_state(state)
+        return json.dumps(serialized, ensure_ascii=False, indent=2)
+    except Exception as e:
+        # エラーが発生した場合は空のJSONオブジェクトを返す
+        print(f"⚠️ Error serializing state: {e}\n{state}")
+        return json.dumps({}, ensure_ascii=False, indent=2)
 
 
 # JSON 文字列から状態を復元
 def json_to_state(json_str: str, state_class: Type[TypedDict]) -> BaseAgentState:
     """JSON文字列からBaseAgentStateを復元"""
-    data = json.loads(json_str)
-    return deserialize_state(data, state_class)
+    if json_str is None or json_str.strip() == "":
+        # None または空文字列の場合は空の状態を返す
+        return state_class({})
+
+    try:
+        data = json.loads(json_str)
+        return deserialize_state(data, state_class)
+    except (json.JSONDecodeError, TypeError) as e:
+        # JSON解析エラーの場合も空の状態を返す
+        return state_class({})

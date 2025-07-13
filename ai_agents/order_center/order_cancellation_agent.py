@@ -64,7 +64,7 @@ Process user requests for order cancellations and returns, ensure proper invento
 - **Policy Enforcement**: Apply cancellation and return policy rules
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Cancellation and Return Guidelines
 
@@ -122,7 +122,7 @@ You are a specialized order cancellation and return management agent in a multi-
 Execute order cancellation and return operations based on structured commands from upstream agents and return structured results.
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Response Format
 - Structured JSON response optimized for upstream agent consumption

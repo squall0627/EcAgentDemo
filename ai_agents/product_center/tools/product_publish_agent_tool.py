@@ -8,6 +8,7 @@ from ai_agents.product_center.product_publish_agent import ProductPublishAgent
 class ProductPublishToolInput(BaseToolInput):
     """商品棚上げ・棚下げ管理ツール入力スキーマ"""
     command: str = Field(description="Product publish/unpublish management command to execute")
+    kwargs: Optional[dict] = Field(default=None, description="Additional keyword arguments for the command, you MUST put all of the parameters that you want to pass to the command here")
     user_input: Optional[str] = Field(default=None, description="User input (optional)")
     session_id: Optional[str] = Field(default=None, description="Session ID (optional)")
     user_id: Optional[str] = Field(default=None, description="User ID (optional)")
@@ -29,6 +30,8 @@ class ProductPublishAgentTool(BaseAgentTool):
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """商品棚上げ・棚下げ管理エージェントツール初期化"""
         super().__init__(api_key=api_key, llm_type=llm_type, use_langfuse=use_langfuse)
+        inside_tools_description = self.agent.generate_tool_descriptions()
+        self.description = f"Product detail management agent tool for executing commands. This agent has the following tools: {inside_tools_description}"
 
     def _initialize_agent(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """Initialize the ProductPublishAgent with the provided parameters"""

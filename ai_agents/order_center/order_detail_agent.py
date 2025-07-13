@@ -56,7 +56,7 @@ Process user requests for order detail information, provide comprehensive order 
 - **Status Tracking**: Show order progression through different stages
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Response Guidelines
 - Always provide comprehensive order information when available
@@ -80,7 +80,7 @@ You are a specialized order detail management agent in a multi-layer agent syste
 Execute order detail retrieval and search operations based on structured commands from upstream agents and return structured results.
 
 ## Available Tools
-{self._generate_tool_descriptions()}
+{self.generate_tool_descriptions()}
 
 ## Response Format
 - Structured JSON response optimized for upstream agent consumption

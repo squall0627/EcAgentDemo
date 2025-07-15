@@ -30,6 +30,49 @@ body {
     flex-shrink: 0; /* ヘッダーは縮小しない */
 }
 
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.header-text {
+    flex: 1;
+}
+
+.header-actions {
+    display: flex;
+    align-items: flex-start;
+    margin-left: 20px;
+}
+
+.settings-btn {
+    background: none;
+    border: none;
+    color: #495057;
+    padding: 8px;
+    cursor: pointer;
+    font-size: 40px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: auto;
+    height: 60px;
+    width: 60px;
+}
+
+.settings-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    transform: scale(1.1);
+}
+
+.settings-btn:active {
+    transform: scale(1.05);
+    background: rgba(0, 0, 0, 0.1);
+}
+
+
 .session-info { 
     background: #e9ecef; 
     padding: 10px 20px; 

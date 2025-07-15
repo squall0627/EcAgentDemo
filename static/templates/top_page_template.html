@@ -24,8 +24,17 @@
 
     <div class="container">
         <div class="header">
-            <h1 style="margin: 0; color: #343a40;">🤖 EC商品管理システム</h1>
-            <p style="margin: 10px 0 0 0; color: #6c757d;">自然言語でAIエージェントと対話して商品を管理できます</p>
+            <div class="header-content">
+                <div class="header-text">
+                    <h1 style="margin: 0; color: #343a40;">🤖 EC商品管理システム</h1>
+                    <p style="margin: 10px 0 0 0; color: #6c757d;">自然言語でAIエージェントと対話して商品を管理できます</p>
+                </div>
+                <div class="header-actions">
+                    <button class="settings-btn" onclick="openSettings()" title="システム設定">
+                        ⚙️
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- セッション情報と履歴クリアボタン -->
@@ -200,6 +209,11 @@
 
             showNotification('新しいチャットを開始しました', 'success');
 
+        }
+
+        // 設定ページを開く
+        function openSettings() {
+            window.location.href = '/api/settings/page';
         }
 
         // 履歴サイドバーを開く

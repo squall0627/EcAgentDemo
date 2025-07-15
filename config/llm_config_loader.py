@@ -6,7 +6,7 @@ from pathlib import Path
 class LLMConfigLoader:
     """LLM設定ローダー"""
     
-    def __init__(self, config_path: str = "config/llm_config.json"):
+    def __init__(self, config_path: str = Path(__file__).parent / "llm_config.json"):
         self.config_path = Path(config_path)
         self._config_cache = None
         self._load_config()

@@ -1,2 +1,4 @@
 /.env
 /.env_sample
+/build/
+/dist/

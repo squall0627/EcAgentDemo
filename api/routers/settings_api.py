@@ -1,4 +1,5 @@
 import os
+import sys
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -31,7 +32,14 @@ ENV_DESCRIPTIONS = {
 
 def get_env_file_path():
     """環境変数ファイルのパスを取得"""
-    return Path(__file__).parent.parent.parent / ".env"
+    if getattr(sys, 'frozen', False):
+        # PyInstallerでパッケージ化された場合
+        # 実行ファイルのディレクトリの親ディレクトリ（distディレクトリ）を取得
+        executable_dir = Path(sys.executable).parent
+        return executable_dir.parent / ".env"
+    else:
+        # 通常の開発環境
+        return Path(__file__).parent.parent.parent / ".env"
 
 def read_env_file():
     """環境変数ファイルを読み込み"""

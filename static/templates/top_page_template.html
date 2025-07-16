@@ -108,6 +108,9 @@
                             placeholder="メッセージを入力してください..."
                             maxlength="2000"
                             rows="1"></textarea>
+                        <button id="voiceBtn" class="voice-button" onclick="toggleVoiceRecording()" title="音声入力">
+                            🎤
+                        </button>
                         <button id="sendBtn" class="send-button" onclick="sendMessage()" title="送信 (Enter)">
                             ➤
                         </button>
@@ -645,6 +648,155 @@
                     <button class="error-retry-btn" onclick="retryLastMessage()">再試行</button>
                 </div>
             </div>`;
+        }
+
+        // 音声録音関連の変数
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // 音声録音の開始/停止を切り替え
+        async function toggleVoiceRecording() {
+            const voiceBtn = document.getElementById('voiceBtn');
+
+            if (isRecording) {
+                stopVoiceRecording();
+            } else {
+                await startVoiceRecording();
+            }
+        }
+
+        // 音声録音を開始
+        async function startVoiceRecording() {
+            const voiceBtn = document.getElementById('voiceBtn');
+
+            try {
+                // マイクへのアクセスを要求
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // MediaRecorderを初期化
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                // 録音データを収集
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                // 録音終了時の処理
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    await processVoiceInput(audioBlob);
+
+                    // ストリームを停止
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                // 録音開始
+                mediaRecorder.start();
+                isRecording = true;
+
+                // UIを更新
+                voiceBtn.classList.add('recording');
+                voiceBtn.title = '録音停止';
+                voiceBtn.innerHTML = '⏹️';
+
+                showNotification('音声録音を開始しました。もう一度クリックして停止してください。', 'info');
+
+            } catch (error) {
+                console.error('音声録音の開始に失敗:', error);
+                showNotification('マイクへのアクセスが拒否されました。ブラウザの設定を確認してください。', 'error');
+            }
+        }
+
+        // 音声録音を停止
+        function stopVoiceRecording() {
+            const voiceBtn = document.getElementById('voiceBtn');
+
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+
+                // UIを更新
+                voiceBtn.classList.remove('recording');
+                voiceBtn.classList.add('processing');
+                voiceBtn.title = '音声処理中...';
+                voiceBtn.innerHTML = '⏳';
+                voiceBtn.disabled = true;
+
+                showNotification('音声を処理中です...', 'info');
+            }
+        }
+
+        // 音声入力を処理
+        async function processVoiceInput(audioBlob) {
+            const voiceBtn = document.getElementById('voiceBtn');
+
+            try {
+                // FormDataを作成
+                const formData = new FormData();
+                formData.append('audio_file', audioBlob, 'recording.wav');
+                formData.append('session_id', currentSessionId);
+                formData.append('user_id', currentUserId);
+                formData.append('agent_type', document.getElementById('agentSelect').value);
+                formData.append('llm_type', document.getElementById('llmSelect').value);
+
+                // 音声処理APIを呼び出し
+                const response = await fetch('/api/chat/voice_input', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // 変換されたテキストを入力欄に設定
+                const input = document.getElementById('commandInput');
+                input.value = data.transcribed_text;
+                autoResize(input);
+
+                // エージェントの応答がある場合は表示
+                if (data.agent_response) {
+                    // ユーザーメッセージを表示
+                    const userMessageId = addMessage('user', data.transcribed_text, false, null, new Date().toISOString());
+
+                    // エージェントの応答を処理
+                    const processedResponse = await handleApiResponse(data.agent_response);
+
+                    // conversation IDが取得できた場合、ユーザーメッセージにも設定
+                    if (processedResponse.conversationId) {
+                        const userMessageElement = document.getElementById(userMessageId);
+                        if (userMessageElement) {
+                            userMessageElement.setAttribute('data-conversation-id', processedResponse.conversationId);
+                        }
+                    }
+
+                    // レスポンスを表示
+                    addMessage('assistant', processedResponse.content, false, processedResponse.traceId, new Date().toISOString(), processedResponse.conversationId, processedResponse.hasError);
+
+                    // 入力欄をクリア
+                    input.value = '';
+                    autoResize(input);
+                }
+
+                showNotification('音声入力が完了しました', 'success');
+
+            } catch (error) {
+                console.error('音声処理エラー:', error);
+                showNotification(`音声処理に失敗しました: ${error.message}`, 'error');
+            } finally {
+                // UIを元に戻す
+                voiceBtn.classList.remove('processing');
+                voiceBtn.title = '音声入力';
+                voiceBtn.innerHTML = '🎤';
+                voiceBtn.disabled = false;
+            }
         }
 
         // 最後のメッセージを再試行

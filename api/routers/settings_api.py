@@ -1,5 +1,7 @@
 import os
 import sys
+
+from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -124,6 +126,9 @@ async def update_environment_variables(settings: SettingsUpdate):
         # 環境変数を実際のプロセスにも反映
         for key, value in settings.variables.items():
             os.environ[key] = value
+
+        # 環境変数を.envファイルから読み込み
+        load_dotenv()
 
         return {"message": "環境変数が正常に更新されました", "updated_count": len(settings.variables)}
     except Exception as e:

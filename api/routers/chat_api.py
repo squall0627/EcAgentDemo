@@ -1,11 +1,12 @@
 import httpx
-from fastapi import APIRouter, HTTPException, Depends, Query, Form
+from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 from sqlalchemy.orm.attributes import flag_modified
 from db.database import get_db
 from services.conversation_service import ConversationService
+from services.voice_service import VoiceService
 from db.models.conversation_history import ConversationHistory
 from utils.langfuse_handler import get_global_langfuse_handler
 import datetime
@@ -128,7 +129,7 @@ async def regenerate_response(
             else:
                 # 他のエージェントの場合は単一エージェントAPIを使用
                 api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
-            
+
             # 前端と同じリクエストボディ構造
             payload = {
                 "message": query,
@@ -413,6 +414,127 @@ async def clear_session_history(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"履歴クリアに失敗しました: {str(e)}")
+
+@router.post("/voice_input")
+async def process_voice_input(
+    audio_file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None),
+    agent_type: Optional[str] = Form("default"),
+    llm_type: Optional[str] = Form("ollama"),
+    context: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    音声入力を処理してテキストに変換し、既存のチャットワークフローに送信
+
+    Args:
+        audio_file: アップロードされた音声ファイル
+        session_id: セッションID
+        user_id: ユーザーID
+        agent_type: エージェントタイプ
+        llm_type: LLMタイプ
+        context: コンテキスト情報
+        db: データベースセッション
+
+    Returns:
+        音声変換結果とチャット応答
+    """
+    voice_service = VoiceService()
+
+    # 音声サービスが利用可能かチェック
+    if not voice_service.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="音声機能が利用できません。OpenAI APIキーが設定されていることを確認してください。"
+        )
+
+    # サポートされているファイル形式をチェック
+    if audio_file.filename:
+        file_extension = audio_file.filename.split('.')[-1].lower()
+        if file_extension not in voice_service.get_supported_formats():
+            raise HTTPException(
+                status_code=400,
+                detail=f"サポートされていないファイル形式です。サポート形式: {', '.join(voice_service.get_supported_formats())}"
+            )
+
+    try:
+        # 音声ファイルを読み込み
+        audio_data = await audio_file.read()
+
+        # 音声をテキストに変換（Langfuse追跡付き）
+        transcribed_text = await voice_service.transcribe_audio(
+            audio_data, 
+            audio_file.filename or "audio.wav",
+            session_id=session_id,
+            user_id=user_id
+        )
+
+        if not transcribed_text or not transcribed_text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="音声からテキストを抽出できませんでした。音声が明確に録音されているか確認してください。"
+            )
+
+        # 変換されたテキストを既存のチャットワークフローに送信
+        # regenerate_response関数と同じロジックを使用
+        agent_response_data = None
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # エージェントAPIエンドポイントを決定
+                if agent_type == "AgentDirector":
+                    api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
+                else:
+                    api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
+
+                # リクエストペイロードを構築
+                payload = {
+                    "message": transcribed_text,
+                    "user_id": user_id or "",
+                    "session_id": session_id or "",
+                    "llm_type": llm_type,
+                    "agent_type": agent_type,
+                    "context": context if context else {}
+                }
+
+                # エージェントAPIを呼び出し
+                response = await client.post(api_url, json=payload, timeout=120.0)
+
+                if response.status_code == 200:
+                    agent_response_data = response.json()
+                else:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"エージェントAPI呼び出しに失敗しました: {response.text}"
+                    )
+
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="エージェント応答がタイムアウトしました。しばらく待ってから再試行してください。"
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"エージェントサービスに接続できません: {str(e)}"
+            )
+
+        return {
+            "status": "success",
+            "transcribed_text": transcribed_text,
+            "agent_response": agent_response_data,
+            "message": "音声入力が正常に処理されました"
+        }
+
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"音声処理中にエラーが発生しました: {str(e)}"
+        )
 
 def _save_evaluation_status(db: Session, trace_id: str, evaluation: str, user_id: Optional[str] = None, comment: Optional[str] = None):
     """評価状態をデータベースに保存"""

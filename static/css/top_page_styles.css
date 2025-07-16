@@ -567,6 +567,50 @@ body {
     cursor: not-allowed;
 }
 
+.voice-button {
+    background: #28a745;
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+    margin-right: 8px;
+}
+
+.voice-button:hover {
+    background: #1e7e34;
+}
+
+.voice-button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+.voice-button.recording {
+    background: #dc3545;
+    animation: pulse 1s infinite;
+}
+
+.voice-button.recording:hover {
+    background: #c82333;
+}
+
+.voice-button.processing {
+    background: #ffc107;
+    cursor: wait;
+}
+
+.voice-button.processing:hover {
+    background: #e0a800;
+}
+
 .input-hint {
     font-size: 11px;
     color: #999;

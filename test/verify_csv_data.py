@@ -6,7 +6,7 @@ def verify_products_csv():
     print("=== 商品データ検証 ===")
 
     try:
-        with open('csv_data/products.csv', 'r', encoding='utf-8') as csvfile:
+        with open('test/csv_data/products.csv', 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             products = list(reader)
 
@@ -39,7 +39,7 @@ def verify_orders_csv():
     print("\n=== 注文データ検証 ===")
 
     try:
-        with open('csv_data/orders.csv', 'r', encoding='utf-8') as csvfile:
+        with open('test/csv_data/orders.csv', 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             orders = list(reader)
 
@@ -72,7 +72,7 @@ def verify_order_items_csv():
     print("\n=== 注文アイテムデータ検証 ===")
 
     try:
-        with open('csv_data/order_items.csv', 'r', encoding='utf-8') as csvfile:
+        with open('test/csv_data/order_items.csv', 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             order_items = list(reader)
 
@@ -107,17 +107,17 @@ def verify_data_relationships():
 
     try:
         # 商品データ読み込み
-        with open('csv_data/products.csv', 'r', encoding='utf-8') as csvfile:
+        with open('test/csv_data/products.csv', 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             products = list(reader)
 
         # 注文データ読み込み
-        with open('csv_data/orders.csv', 'r', encoding='utf-8') as csvfile:
+        with open('test/csv_data/orders.csv', 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             orders = list(reader)
 
         # 注文アイテムデータ読み込み
-        with open('csv_data/order_items.csv', 'r', encoding='utf-8') as csvfile:
+        with open('test/csv_data/order_items.csv', 'r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
             order_items = list(reader)
 

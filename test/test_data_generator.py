@@ -369,8 +369,8 @@ class TestDataGenerator:
             return
 
         # CSVディレクトリを作成
-        os.makedirs("csv_data", exist_ok=True)
-        filepath = os.path.join("csv_data", filename)
+        os.makedirs("test/csv_data", exist_ok=True)
+        filepath = os.path.join("test/csv_data", filename)
 
         with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
             if data:
@@ -412,7 +412,7 @@ class CSVDataImporter:
         if hasattr(self, 'db'):
             self.db.close()
 
-    def import_products_from_csv(self, csv_path: str = "csv_data/products.csv"):
+    def import_products_from_csv(self, csv_path: str = "test/csv_data/products.csv"):
         """商品データをCSVからインポート"""
         print(f"商品データをインポート中: {csv_path}")
 
@@ -444,7 +444,7 @@ class CSVDataImporter:
             self.db.rollback()
             print(f"商品データインポートエラー: {e}")
 
-    def import_orders_from_csv(self, csv_path: str = "csv_data/orders.csv"):
+    def import_orders_from_csv(self, csv_path: str = "test/csv_data/orders.csv"):
         """注文データをCSVからインポート"""
         print(f"注文データをインポート中: {csv_path}")
 
@@ -485,7 +485,7 @@ class CSVDataImporter:
             self.db.rollback()
             print(f"注文データインポートエラー: {e}")
 
-    def import_order_items_from_csv(self, csv_path: str = "csv_data/order_items.csv"):
+    def import_order_items_from_csv(self, csv_path: str = "test/csv_data/order_items.csv"):
         """注文アイテムデータをCSVからインポート"""
         print(f"注文アイテムデータをインポート中: {csv_path}")
 
@@ -517,9 +517,6 @@ class CSVDataImporter:
     def import_all_from_csv(self):
         """すべてのCSVデータをインポート（既存データを削除してから実行）"""
         print("=== CSVデータインポート開始 ===")
-
-        # データベーステーブルを初期化
-        init_db()
 
         # 既存データをすべて削除
         self.clear_all_data()

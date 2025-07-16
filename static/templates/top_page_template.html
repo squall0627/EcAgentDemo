@@ -101,6 +101,12 @@
             <!-- チャット入力エリア -->
             <div class="chat-input-area">
                 <div class="input-container">
+                    <!-- 左下角のファイルアップロードボタン -->
+                    <button id="imageBtn" class="plus-button" onclick="triggerImageUpload()" title="ファイルをアップロード">
+                        +添付
+                    </button>
+                    <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleImageUpload(event)">
+
                     <div class="input-wrapper">
                         <textarea 
                             id="commandInput" 
@@ -117,7 +123,7 @@
                     </div>
                 </div>
                 <div class="input-hint">
-                    Shift+Enter: 改行 | Enter: 送信 | 最大2000文字
+                    Shift+Enter: 改行 | Enter: 送信 | 最大2000文字 | 最大ファイルサイズ10M
                 </div>
             </div>
         </div>
@@ -135,6 +141,9 @@
 
         // セッションID管理
         let currentSessionId = localStorage.getItem('productManagementSessionId');
+
+        // 一時アップロードファイル管理
+        let tempUploadedFiles = [];
         if (!currentSessionId) {
             currentSessionId = generateSessionId();
             localStorage.setItem('productManagementSessionId', currentSessionId);
@@ -203,6 +212,9 @@
 
             // 入力欄をクリア
             document.getElementById('commandInput').value = '';
+
+            // 一時ファイルをクリア
+            clearTempFiles();
 
             // エージェントとLLMの選択は保持する（ユーザーの要求に応じて）
             // 選択状態は既にlocalStorageに保存されているので、何もしない
@@ -799,6 +811,158 @@
             }
         }
 
+        // 画像アップロードをトリガー
+        function triggerImageUpload() {
+            const imageInput = document.getElementById('imageInput');
+            imageInput.click();
+        }
+
+        // 画像アップロードを処理（一時保存）
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // ファイル形式をチェック
+            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                showNotification('サポートされていないファイル形式です。JPG, PNG, GIF, WebP のいずれかを選択してください。', 'error');
+                return;
+            }
+
+            // ファイルサイズをチェック（10MB制限）
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                showNotification('ファイルサイズが大きすぎます。10MB以下のファイルを選択してください。', 'error');
+                return;
+            }
+
+            const imageBtn = document.getElementById('imageBtn');
+
+            try {
+                // UIを更新（アップロード中状態）
+                imageBtn.classList.add('uploading');
+                imageBtn.disabled = true;
+                imageBtn.title = 'ファイルアップロード中...';
+
+                // FormDataを作成（一時アップロード用）
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('session_id', currentSessionId);
+                formData.append('user_id', currentUserId);
+
+                // 一時ファイルアップロードAPIを呼び出し
+                const response = await fetch('/api/chat/temp_file_upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // 一時ファイル情報を保存
+                const tempFile = {
+                    file_id: data.file_id,
+                    filename: data.filename,
+                    file_size: data.file_size,
+                    upload_time: new Date().toISOString()
+                };
+                tempUploadedFiles.push(tempFile);
+
+                // 一時ファイル表示を更新
+                updateTempFileDisplay();
+
+                showNotification(`ファイル "${data.filename}" が一時保存されました。テキストまたは音声で指示を入力してください。`, 'success');
+
+            } catch (error) {
+                console.error('ファイルアップロードエラー:', error);
+                showNotification(`ファイルアップロードに失敗しました: ${error.message}`, 'error');
+            } finally {
+                // UIを元に戻す
+                imageBtn.classList.remove('uploading');
+                imageBtn.disabled = false;
+                imageBtn.title = 'ファイルをアップロード';
+
+                // ファイル入力をリセット
+                event.target.value = '';
+            }
+        }
+
+        // 一時ファイル表示を更新
+        function updateTempFileDisplay() {
+            const inputContainer = document.querySelector('.input-container');
+
+            // 既存の一時ファイル表示を削除
+            const existingDisplay = document.getElementById('tempFileDisplay');
+            if (existingDisplay) {
+                existingDisplay.remove();
+            }
+
+            // 一時ファイルがある場合のみ表示を作成
+            if (tempUploadedFiles.length > 0) {
+                const tempFileDisplay = document.createElement('div');
+                tempFileDisplay.id = 'tempFileDisplay';
+                tempFileDisplay.className = 'temp-file-display';
+
+                const fileList = tempUploadedFiles.map(file => {
+                    return `
+                        <div class="temp-file-item" data-file-id="${file.file_id}">
+                            <span class="temp-file-icon">📎</span>
+                            <span class="temp-file-name">${file.filename}</span>
+                            <button class="temp-file-remove" onclick="removeTempFile('${file.file_id}')" title="削除">×</button>
+                        </div>
+                    `;
+                }).join('');
+
+                tempFileDisplay.innerHTML = `
+                    <div class="temp-file-header">アップロード済みファイル:</div>
+                    <div class="temp-file-list">${fileList}</div>
+                `;
+
+                // 入力コンテナの前に挿入
+                inputContainer.parentNode.insertBefore(tempFileDisplay, inputContainer);
+            }
+        }
+
+        // 一時ファイルを削除
+        async function removeTempFile(fileId) {
+            try {
+                // バックエンドから実際のファイルを削除
+                const formData = new FormData();
+                formData.append('file_id', fileId);
+                formData.append('session_id', currentSessionId);
+                formData.append('user_id', currentUserId);
+
+                const response = await fetch('/api/chat/temp_file_delete', {
+                    method: 'DELETE',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                // バックエンドでの削除が成功した場合、フロントエンドからも削除
+                tempUploadedFiles = tempUploadedFiles.filter(file => file.file_id !== fileId);
+                updateTempFileDisplay();
+                showNotification('ファイルが削除されました', 'success');
+
+            } catch (error) {
+                console.error('ファイル削除エラー:', error);
+                showNotification(`ファイル削除に失敗しました: ${error.message}`, 'error');
+            }
+        }
+
+        // 新しいチャット開始時に一時ファイルをクリア
+        function clearTempFiles() {
+            tempUploadedFiles = [];
+            updateTempFileDisplay();
+        }
+
         // 最後のメッセージを再試行
         function retryLastMessage() {
             const messages = document.querySelectorAll('.message.user');
@@ -836,36 +1000,76 @@
                 const selectedAgent = document.getElementById('agentSelect').value;
                 const llmModel = document.getElementById('llmSelect').value;
 
-                // 選択されたエージェントに基づいてAPIエンドポイントを決定
-                let apiUrl;
-                if (selectedAgent === 'AgentDirector') {
-                    apiUrl = '/api/agent/director-agent/chat';
+                let data;
+
+                // 一時ファイルがある場合は、ファイル付きメッセージ処理エンドポイントを使用
+                if (tempUploadedFiles.length > 0) {
+                    // FormDataを作成
+                    const formData = new FormData();
+                    formData.append('message', message);
+                    formData.append('session_id', currentSessionId);
+                    formData.append('user_id', currentUserId);
+                    formData.append('agent_type', selectedAgent);
+                    formData.append('llm_type', llmModel);
+
+                    // ファイルIDをカンマ区切りで追加
+                    const fileIds = tempUploadedFiles.map(file => file.file_id).join(',');
+                    formData.append('file_ids', fileIds);
+
+                    const response = await fetch('/api/chat/process_message_with_files', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                    }
+
+                    const responseData = await response.json();
+
+                    // エージェント応答を取得
+                    if (responseData.agent_response) {
+                        data = responseData.agent_response;
+                    } else {
+                        throw new Error('エージェント応答が取得できませんでした');
+                    }
+
+                    // 一時ファイルをクリア（処理完了後）
+                    clearTempFiles();
+
                 } else {
-                    // 他のエージェントの場合は単一エージェントAPIを使用
-                    apiUrl = '/api/agent/single-agent/chat';
+                    // 通常のメッセージ処理（ファイルなし）
+                    let apiUrl;
+                    if (selectedAgent === 'AgentDirector') {
+                        apiUrl = '/api/agent/director-agent/chat';
+                    } else {
+                        apiUrl = '/api/agent/single-agent/chat';
+                    }
+
+                    const requestBody = {
+                        message: message,
+                        user_id: currentUserId,
+                        session_id: currentSessionId,
+                        llm_type: llmModel,
+                        agent_type: selectedAgent,
+                        context: {}
+                    };
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    data = await response.json();
                 }
-                const requestBody = {
-                    message: message,
-                    user_id: currentUserId,
-                    session_id: currentSessionId,
-                    llm_type: llmModel,
-                    agent_type: selectedAgent,
-                    context: {}
-                };
-
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
 
                 // レスポンスを処理
                 const processedResponse = await handleApiResponse(data);
@@ -889,7 +1093,7 @@
                 // ローディングを削除
                 removeMessage(loadingId);
                 // エラーメッセージを表示
-                const errorContent = formatErrorMessage('エラーが発生しました。もう一度お試しください。');
+                const errorContent = formatErrorMessage(`エラーが発生しました: ${error.message}`);
                 addMessage('assistant', errorContent, false, null, new Date().toISOString(), null, true);
             } finally {
                 // 送信ボタンを有効化

@@ -7,14 +7,152 @@ from sqlalchemy.orm.attributes import flag_modified
 from db.database import get_db
 from services.conversation_service import ConversationService
 from services.voice_service import VoiceService
+from services.image_service import ImageService
 from db.models.conversation_history import ConversationHistory
 from utils.langfuse_handler import get_global_langfuse_handler
 import datetime
+import os
+import uuid
 
 router = APIRouter()
 
 # Langfuseハンドラーを取得（既存の初期化済みクライアントを使用）
 langfuse_handler = get_global_langfuse_handler()
+
+# 一時ファイル保存用のディレクトリ
+TEMP_UPLOAD_DIR = "temp_uploads"
+
+# 一時ファイル管理用のヘルパー関数
+def ensure_temp_dir():
+    """一時ディレクトリが存在することを確認"""
+    if not os.path.exists(TEMP_UPLOAD_DIR):
+        os.makedirs(TEMP_UPLOAD_DIR)
+
+def save_temp_file(file_data: bytes, filename: str, session_id: str, user_id: str) -> str:
+    """
+    一時ファイルを保存し、ファイルIDを返す
+
+    Args:
+        file_data: ファイルデータ
+        filename: 元のファイル名
+        session_id: セッションID
+        user_id: ユーザーID
+
+    Returns:
+        ファイルID
+    """
+    ensure_temp_dir()
+
+    # ユニークなファイルIDを生成
+    file_id = str(uuid.uuid4())
+
+    # ファイル拡張子を保持
+    file_extension = ""
+    if "." in filename:
+        file_extension = "." + filename.split(".")[-1]
+
+    # 一時ファイルパスを生成（ユーザーID、セッションID、ファイルIDを含む）
+    temp_filename = f"{user_id}_{session_id}_{file_id}{file_extension}"
+    temp_filepath = os.path.join(TEMP_UPLOAD_DIR, temp_filename)
+
+    # ファイルを保存
+    with open(temp_filepath, "wb") as f:
+        f.write(file_data)
+
+    return file_id
+
+def get_temp_file_path(file_id: str, session_id: str, user_id: str) -> Optional[str]:
+    """
+    ファイルIDからファイルパスを取得
+
+    Args:
+        file_id: ファイルID
+        session_id: セッションID
+        user_id: ユーザーID
+
+    Returns:
+        ファイルパス（存在しない場合はNone）
+    """
+    # 一時ディレクトリが存在しない場合はNoneを返す
+    if not os.path.exists(TEMP_UPLOAD_DIR):
+        return None
+
+    # ユーザーID、セッションID、ファイルIDでファイルを検索
+    try:
+        for filename in os.listdir(TEMP_UPLOAD_DIR):
+            if filename.startswith(f"{user_id}_{session_id}_{file_id}"):
+                return os.path.join(TEMP_UPLOAD_DIR, filename)
+    except OSError:
+        # ディレクトリの読み取りに失敗した場合
+        return None
+    return None
+
+def cleanup_temp_files(session_id: str, user_id: str, max_age_hours: int = 24):
+    """
+    古い一時ファイルをクリーンアップ
+
+    Args:
+        session_id: セッションID（必須）
+        user_id: ユーザーID（必須）
+        max_age_hours: ファイルの最大保持時間（時間）
+    """
+    if not os.path.exists(TEMP_UPLOAD_DIR):
+        return
+
+    # user_idとsession_idが両方とも有効でない場合は、安全のため何もしない
+    if not user_id or not session_id:
+        return
+
+    current_time = datetime.datetime.now()
+
+    for filename in os.listdir(TEMP_UPLOAD_DIR):
+        filepath = os.path.join(TEMP_UPLOAD_DIR, filename)
+
+        # 指定されたユーザーとセッションのファイルのみを対象とする
+        if not filename.startswith(f"{user_id}_{session_id}_"):
+            continue
+
+        # ファイルの作成時間をチェック
+        file_time = datetime.datetime.fromtimestamp(os.path.getctime(filepath))
+        if (current_time - file_time).total_seconds() > max_age_hours * 3600:
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass  # ファイル削除に失敗しても続行
+
+def delete_temp_file(file_id: str, session_id: str, user_id: str) -> bool:
+    """
+    指定された一時ファイルを削除
+
+    Args:
+        file_id: ファイルID
+        session_id: セッションID
+        user_id: ユーザーID
+
+    Returns:
+        削除に成功した場合True、失敗した場合False
+    """
+    if not os.path.exists(TEMP_UPLOAD_DIR):
+        print(f"⚠️ 一時ディレクトリ:{TEMP_UPLOAD_DIR}が存在しません。削除できません。")
+        return False
+
+    # user_idとsession_idが両方とも有効でない場合は、安全のため何もしない
+    if not user_id or not session_id or not file_id:
+        print(f"⚠️ 無効なパラメータ: user_id:{user_id}, session_id:{session_id}, または file_id:{file_id} が指定されていません。削除できません。")
+        return False
+
+    # ファイルパスを取得
+    temp_file_path = get_temp_file_path(file_id, session_id, user_id)
+    if not temp_file_path or not os.path.exists(temp_file_path):
+        print(f"⚠️ ファイルパス {temp_file_path} に対応するファイルが見つかりません。削除できません。")
+        return False
+
+    try:
+        os.remove(temp_file_path)
+        return True
+    except OSError as e:
+        print(f"⚠️ ファイル {temp_file_path} の削除に失敗しました。{str(e)}")
+        return False
 
 class ConversationHistoryResponse(BaseModel):
     id: int
@@ -534,6 +672,404 @@ async def process_voice_input(
         raise HTTPException(
             status_code=500,
             detail=f"音声処理中にエラーが発生しました: {str(e)}"
+        )
+
+@router.post("/temp_file_upload")
+async def upload_temp_file(
+    file: UploadFile = File(...),
+    session_id: str = Form(...),
+    user_id: Optional[str] = Form(None)
+):
+    """
+    ファイルを一時ディレクトリにアップロードし、後で処理するためのファイルIDを返す
+
+    Args:
+        file: アップロードするファイル
+        session_id: セッションID
+        user_id: ユーザーID
+
+    Returns:
+        ファイルID、ファイル名、ファイルサイズなどの情報
+    """
+    # ファイルサイズをチェック（10MB制限）
+    max_size = 10 * 1024 * 1024  # 10MB
+    file_data = await file.read()
+
+    if len(file_data) > max_size:
+        raise HTTPException(
+            status_code=400,
+            detail="ファイルサイズが大きすぎます。10MB以下のファイルを選択してください。"
+        )
+
+    # サポートされているファイル形式をチェック（画像のみ）
+    image_service = ImageService()
+    if file.filename:
+        file_extension = file.filename.split('.')[-1].lower()
+        if file_extension not in image_service.get_supported_formats():
+            raise HTTPException(
+                status_code=400,
+                detail=f"サポートされていないファイル形式です。サポート形式: {', '.join(image_service.get_supported_formats())}"
+            )
+
+    try:
+        # user_idがNoneの場合はデフォルト値を使用
+        effective_user_id = user_id or "default_user"
+
+        # 一時ファイルとして保存
+        file_id = save_temp_file(file_data, file.filename or "uploaded_file", session_id, effective_user_id)
+
+        # 古いファイルをクリーンアップ
+        cleanup_temp_files(session_id, effective_user_id)
+
+        return {
+            "status": "success",
+            "file_id": file_id,
+            "filename": file.filename,
+            "file_size": len(file_data),
+            "session_id": session_id,
+            "message": "ファイルが一時保存されました。テキストまたは音声で指示を入力してください。"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ファイルの一時保存に失敗しました: {str(e)}"
+        )
+
+@router.delete("/temp_file_delete")
+async def delete_temp_file_endpoint(
+    file_id: str = Form(...),
+    session_id: str = Form(...),
+    user_id: Optional[str] = Form(None)
+):
+    """
+    指定された一時ファイルを削除
+
+    Args:
+        file_id: 削除するファイルのID
+        session_id: セッションID
+        user_id: ユーザーID
+
+    Returns:
+        削除結果
+    """
+    try:
+        # user_idがNoneの場合はデフォルト値を使用
+        effective_user_id = user_id or "default_user"
+
+        # ファイルを削除
+        success = delete_temp_file(file_id, session_id, effective_user_id)
+
+        if success:
+            return {
+                "status": "success",
+                "file_id": file_id,
+                "message": "ファイルが正常に削除されました"
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="指定されたファイルが見つからないか、削除に失敗しました"
+            )
+
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"ファイル削除中にエラーが発生しました: {str(e)}"
+        )
+
+@router.post("/process_message_with_files")
+async def process_message_with_files(
+    message: str = Form(...),
+    file_ids: Optional[str] = Form(None),  # カンマ区切りのファイルIDリスト
+    session_id: str = Form(...),
+    user_id: Optional[str] = Form(None),
+    agent_type: Optional[str] = Form("default"),
+    llm_type: Optional[str] = Form("ollama"),
+    context: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    ユーザーメッセージと一時保存されたファイルを一緒に処理
+
+    Args:
+        message: ユーザーメッセージ
+        file_ids: 一時保存されたファイルのIDリスト（カンマ区切り）
+        session_id: セッションID
+        user_id: ユーザーID
+        agent_type: エージェントタイプ
+        llm_type: LLMタイプ
+        context: コンテキスト情報
+        db: データベースセッション
+
+    Returns:
+        処理結果とエージェント応答
+    """
+    try:
+        final_message = message
+        processed_files = []
+
+        # ファイルIDが指定されている場合、ファイルを処理
+        if file_ids and file_ids.strip():
+            image_service = ImageService()
+
+            # 画像サービスが利用可能かチェック
+            if not image_service.is_available():
+                raise HTTPException(
+                    status_code=503,
+                    detail="画像分析機能が利用できません。OpenAI APIキーが設定されていることを確認してください。"
+                )
+
+            file_id_list = [fid.strip() for fid in file_ids.split(",") if fid.strip()]
+
+            for file_id in file_id_list:
+                # user_idがNoneの場合はデフォルト値を使用
+                effective_user_id = user_id or "default_user"
+
+                # 一時ファイルのパスを取得
+                temp_file_path = get_temp_file_path(file_id, session_id, effective_user_id)
+                if not temp_file_path or not os.path.exists(temp_file_path):
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"ファイルID {file_id} に対応するファイルが見つかりません。"
+                    )
+
+                # ファイルを読み込み
+                with open(temp_file_path, "rb") as f:
+                    file_data = f.read()
+
+                # ファイル名を取得
+                filename = os.path.basename(temp_file_path)
+
+                # 画像を分析
+                image_analysis = await image_service.analyze_image(
+                    file_data,
+                    filename,
+                    user_prompt=message,
+                    session_id=session_id,
+                    user_id=user_id
+                )
+
+                if image_analysis and image_analysis.strip():
+                    processed_files.append({
+                        "file_id": file_id,
+                        "filename": filename,
+                        "analysis": image_analysis
+                    })
+
+            # 画像分析結果をメッセージに統合
+            if processed_files:
+                file_analyses = []
+                for pf in processed_files:
+                    file_analyses.append(f"【ファイル: {pf['filename']}】\n{pf['analysis']}")
+
+                files_section = "\n\n".join(file_analyses)
+                final_message = f"[Instruction from User]\n{message}\n\n[Analysis Result of the Uploaded File]\n{files_section}\n\nBased on the above file analysis result, please respond according to the user’s instructions."
+
+        # エージェントAPIに送信
+        agent_response_data = None
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # エージェントAPIエンドポイントを決定
+                if agent_type == "AgentDirector":
+                    api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
+                else:
+                    api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
+
+                # リクエストペイロードを構築
+                payload = {
+                    "message": final_message,
+                    "user_id": user_id or "",
+                    "session_id": session_id,
+                    "llm_type": llm_type,
+                    "agent_type": agent_type,
+                    "context": context if context else {}
+                }
+
+                # エージェントAPIを呼び出し
+                response = await client.post(api_url, json=payload, timeout=120.0)
+
+                if response.status_code == 200:
+                    agent_response_data = response.json()
+                else:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"エージェントAPI呼び出しに失敗しました: {response.text}"
+                    )
+
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="エージェント応答がタイムアウトしました。しばらく待ってから再試行してください。"
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"エージェントサービスに接続できません: {str(e)}"
+            )
+
+        # 処理完了後、使用したファイルを削除
+        if file_ids and file_ids.strip():
+            # user_idがNoneの場合はデフォルト値を使用
+            effective_user_id = user_id or "default_user"
+
+            file_id_list = [fid.strip() for fid in file_ids.split(",") if fid.strip()]
+            for file_id in file_id_list:
+                temp_file_path = get_temp_file_path(file_id, session_id, effective_user_id)
+                if temp_file_path and os.path.exists(temp_file_path):
+                    try:
+                        os.remove(temp_file_path)
+                    except OSError:
+                        pass  # ファイル削除に失敗しても続行
+
+        return {
+            "status": "success",
+            "original_message": message,
+            "final_message": final_message,
+            "processed_files": processed_files,
+            "agent_response": agent_response_data,
+            "message": "メッセージとファイルが正常に処理されました"
+        }
+
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"メッセージ処理中にエラーが発生しました: {str(e)}"
+        )
+
+@router.post("/image_input")
+async def process_image_input(
+    image_file: UploadFile = File(...),
+    user_message: Optional[str] = Form(None),
+    session_id: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None),
+    agent_type: Optional[str] = Form("default"),
+    llm_type: Optional[str] = Form("ollama"),
+    context: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    画像入力を処理して分析し、既存のチャットワークフローに送信
+
+    Args:
+        image_file: アップロードされた画像ファイル
+        user_message: ユーザーからのテキストメッセージ（オプション）
+        session_id: セッションID
+        user_id: ユーザーID
+        agent_type: エージェントタイプ
+        llm_type: LLMタイプ
+        context: コンテキスト情報
+        db: データベースセッション
+
+    Returns:
+        画像分析結果とチャット応答
+    """
+    image_service = ImageService()
+
+    # 画像サービスが利用可能かチェック
+    if not image_service.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="画像分析機能が利用できません。OpenAI APIキーが設定されていることを確認してください。"
+        )
+
+    # サポートされているファイル形式をチェック
+    if image_file.filename:
+        file_extension = image_file.filename.split('.')[-1].lower()
+        if file_extension not in image_service.get_supported_formats():
+            raise HTTPException(
+                status_code=400,
+                detail=f"サポートされていないファイル形式です。サポート形式: {', '.join(image_service.get_supported_formats())}"
+            )
+
+    try:
+        # 画像ファイルを読み込み
+        image_data = await image_file.read()
+
+        # 画像を分析（Langfuse追跡付き）
+        image_analysis = await image_service.analyze_image(
+            image_data, 
+            image_file.filename or "image.jpg",
+            user_prompt=user_message,
+            session_id=session_id,
+            user_id=user_id
+        )
+
+        if not image_analysis or not image_analysis.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="画像から情報を抽出できませんでした。画像が明確で読み取り可能か確認してください。"
+            )
+
+        # 画像分析結果とユーザーメッセージをマージ
+        merged_message = image_service.merge_image_analysis_with_text(image_analysis, user_message)
+
+        # マージされたメッセージを既存のチャットワークフローに送信
+        agent_response_data = None
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # エージェントAPIエンドポイントを決定
+                if agent_type == "AgentDirector":
+                    api_url = f"{AGENT_API_BASE_URL}/api/agent/director-agent/chat"
+                else:
+                    api_url = f"{AGENT_API_BASE_URL}/api/agent/single-agent/chat"
+
+                # リクエストペイロードを構築
+                payload = {
+                    "message": merged_message,
+                    "user_id": user_id or "",
+                    "session_id": session_id or "",
+                    "llm_type": llm_type,
+                    "agent_type": agent_type,
+                    "context": context if context else {}
+                }
+
+                # エージェントAPIを呼び出し
+                response = await client.post(api_url, json=payload, timeout=120.0)
+
+                if response.status_code == 200:
+                    agent_response_data = response.json()
+                else:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail=f"エージェントAPI呼び出しに失敗しました: {response.text}"
+                    )
+
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="エージェント応答がタイムアウトしました。しばらく待ってから再試行してください。"
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"エージェントサービスに接続できません: {str(e)}"
+            )
+
+        return {
+            "status": "success",
+            "image_analysis": image_analysis,
+            "user_message": user_message,
+            "merged_message": merged_message,
+            "agent_response": agent_response_data,
+            "message": "画像入力が正常に処理されました"
+        }
+
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"画像処理中にエラーが発生しました: {str(e)}"
         )
 
 def _save_evaluation_status(db: Session, trace_id: str, evaluation: str, user_id: Optional[str] = None, comment: Optional[str] = None):

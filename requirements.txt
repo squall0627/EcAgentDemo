@@ -5,9 +5,11 @@ psycopg2-binary==2.9.9
 python-multipart==0.0.6
 langchain~=0.3.26
 langchain-openai~=0.3.24
-langchain-community
+langchain-community~=0.3.26
+langchain-ollama~=0.3.3
+langchain-anthropic~=0.3.17
 langgraph~=0.4.8
-openai
+openai~=1.90.0
 requests==2.31.0
 pydantic~=2.11.7
 python-dotenv==1.0.0
@@ -16,3 +18,4 @@ httpx~=0.28.1
 langchain-core~=0.3.66
 typing_extensions~=4.14.0
 pytest~=8.4.1
+pyinstaller~=6.14.2

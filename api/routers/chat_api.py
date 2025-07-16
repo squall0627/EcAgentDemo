@@ -191,8 +191,8 @@ class RegenerateRequest(BaseModel):
     agent_type: Optional[str] = None
     conversation_id: Optional[int] = None  # 再生成する位置を特定するためのconversation ID
 
-# 在文件顶部添加配置
-AGENT_API_BASE_URL = "http://localhost:5004"  # TODO 根据您的实际配置调整
+# 在文件顶部添加配置 - 環境変数から動的に取得
+AGENT_API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 @router.post("/evaluate_response")
 async def evaluate_response(

@@ -6,6 +6,8 @@ from ai_agents.product_center.product_detail_agent import ProductDetailAgent, EX
 from typing import Optional, List, Dict, Any
 import os
 import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from config.llm_config_loader import llm_config
 from config.agent_hierarchy_loader import agent_hierarchy_loader
 from utils.langfuse_handler import get_global_langfuse_handler
@@ -176,19 +178,40 @@ async def single_agent_chat(request: ChatRequest):
             agent = get_single_agent(llm_type)
 
         print(f"🔄 単一エージェントを{agent.agent_name}で初期化しました")
-        # コマンドを処理
-        response = agent.process_command(
-            request.message, 
-            llm_type=llm_type,
-            session_id=request.session_id,
-            user_id=request.user_id,
-            is_entry_agent=True,
-        )
+
+        # コマンドを非同期で処理（タイムアウト付き）
+        def process_agent_command():
+            return agent.process_command(
+                request.message, 
+                llm_type=llm_type,
+                session_id=request.session_id,
+                user_id=request.user_id,
+                is_entry_agent=True,
+            )
+
+        # ThreadPoolExecutorを使用して同期処理を非同期で実行
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            try:
+                # タイムアウトを120秒に設定（パッケージ環境での長いレスポンス時間を考慮）
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(executor, process_agent_command),
+                    timeout=120.0
+                )
+            except asyncio.TimeoutError:
+                print(f"⏰ エージェント処理がタイムアウトしました (120秒)")
+                raise HTTPException(
+                    status_code=504, 
+                    detail="エージェント処理がタイムアウトしました。しばらく待ってから再試行してください。"
+                )
 
         print(f"✅ 単一エージェント処理完了: {response}")
         # レスポンス解析と構築
         return _parse_agent_response(response, request)
 
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
     except Exception as e:
         print(f"⚠️ 単一エージェント処理中にエラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"単一エージェント処理に失敗しました: {str(e)}")
@@ -213,18 +236,38 @@ async def multi_agent_chat(request: MultiAgentChatRequest):
         # 単一エージェントを取得
         agent = get_multi_agent_manager(llm_type)
 
-        # コマンドを処理
-        response = agent.process_command(
-            request.message,
-            llm_type=llm_type,
-            session_id=request.session_id,
-            user_id=request.user_id,
-            is_entry_agent=True,
-        )
+        # コマンドを非同期で処理（タイムアウト付き）
+        def process_agent_command():
+            return agent.process_command(
+                request.message,
+                llm_type=llm_type,
+                session_id=request.session_id,
+                user_id=request.user_id,
+                is_entry_agent=True,
+            )
+
+        # ThreadPoolExecutorを使用して同期処理を非同期で実行
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            try:
+                # タイムアウトを120秒に設定（パッケージ環境での長いレスポンス時間を考慮）
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(executor, process_agent_command),
+                    timeout=120.0
+                )
+            except asyncio.TimeoutError:
+                print(f"⏰ マルチエージェント処理がタイムアウトしました (120秒)")
+                raise HTTPException(
+                    status_code=504, 
+                    detail="マルチエージェント処理がタイムアウトしました。しばらく待ってから再試行してください。"
+                )
 
         # レスポンス解析と構築
         return _parse_agent_response(response, request)
 
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"マルチエージェント処理に失敗しました: {str(e)}")
 
@@ -235,18 +278,38 @@ async def agent_director_chat(request: ChatRequest):
         # エージェントディレクターを取得
         director = get_agent_director(request.llm_type)
 
-        # コマンドを処理
-        response = director.process_command(
-            request.message,
-            llm_type=request.llm_type,
-            session_id=request.session_id,
-            user_id=request.user_id,
-            is_entry_agent=True,
-        )
+        # コマンドを非同期で処理（タイムアウト付き）
+        def process_agent_command():
+            return director.process_command(
+                request.message,
+                llm_type=request.llm_type,
+                session_id=request.session_id,
+                user_id=request.user_id,
+                is_entry_agent=True,
+            )
+
+        # ThreadPoolExecutorを使用して同期処理を非同期で実行
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            try:
+                # タイムアウトを120秒に設定（パッケージ環境での長いレスポンス時間を考慮）
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(executor, process_agent_command),
+                    timeout=120.0
+                )
+            except asyncio.TimeoutError:
+                print(f"⏰ エージェントディレクター処理がタイムアウトしました (120秒)")
+                raise HTTPException(
+                    status_code=504, 
+                    detail="エージェントディレクター処理がタイムアウトしました。しばらく待ってから再試行してください。"
+                )
 
         # レスポンス解析と構築
         return _parse_agent_response(response, request)
 
+    except HTTPException:
+        # HTTPExceptionはそのまま再発生
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"エージェントディレクター処理に失敗しました: {str(e)}")
 

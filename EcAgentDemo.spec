@@ -2,12 +2,15 @@
 from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('static', 'static'), ('config', 'config')]
+datas = [('static', 'static'), ('config', 'config'), ('test/csv_data', 'test/csv_data')]
 binaries = []
 hiddenimports = ['uvicorn.main', 'uvicorn.server', 'uvicorn.config', 'fastapi', 'fastapi.staticfiles', 'sqlalchemy', 'sqlite3', 'pydantic']
 hiddenimports += collect_submodules('api')
 hiddenimports += collect_submodules('db')
 hiddenimports += collect_submodules('models')
+hiddenimports += collect_submodules('services')
+hiddenimports += collect_submodules('test')
+hiddenimports += collect_submodules('utils')
 tmp_ret = collect_all('langchain')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('openai')
@@ -43,7 +46,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -58,10 +61,4 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='EcAgentDemo',
-)
-app = BUNDLE(
-    coll,
-    name='EcAgentDemo.app',
-    icon=None,
-    bundle_identifier=None,
 )

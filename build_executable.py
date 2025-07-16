@@ -26,6 +26,7 @@ def build_executable():
         '--name=EcAgentDemo',                   # 実行ファイル名
         '--add-data=static:static',             # 静的ファイルを含める
         '--add-data=config:config',             # 設定ファイルを含める
+        '--add-data=test/csv_data:test/csv_data', # テストデータCSVファイルを含める
         '--hidden-import=uvicorn.main',         # uvicornの明示的インポート
         '--hidden-import=uvicorn.server',
         '--hidden-import=uvicorn.config',
@@ -41,7 +42,9 @@ def build_executable():
         '--collect-submodules=api',             # apiモジュールのサブモジュールを収集
         '--collect-submodules=db',              # dbモジュールのサブモジュールを収集
         '--collect-submodules=models',          # modelsモジュールのサブモジュールを収集
-        '--noconsole',                          # Windowsでコンソールウィンドウを非表示
+        '--collect-submodules=services',        # servicesモジュールのサブモジュールを収集
+        '--collect-submodules=test',            # testモジュールのサブモジュールを収集
+        '--collect-submodules=utils',           # utilsモジュールのサブモジュールを収集
         '--clean',                              # 一時ファイルをクリーンアップ
     ]
 
@@ -150,8 +153,12 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
     bat_src = '起動スクリプト.bat'
     bat_dst = os.path.join('dist', '起動スクリプト.bat')
     if os.path.exists(bat_src):
-        shutil.copy2(bat_src, bat_dst)
-        print("🖥️  Windows起動スクリプトをコピーしました")
+        # UTF-8 BOMでバッチファイルをコピー（Windows互換性のため）
+        with open(bat_src, 'r', encoding='utf-8') as src_file:
+            content = src_file.read()
+        with open(bat_dst, 'w', encoding='utf-8-sig') as dst_file:
+            dst_file.write(content)
+        print("🖥️  Windows起動スクリプトをコピーしました（UTF-8 BOM付き）")
 
     # Mac/Linux用シェルスクリプト
     sh_src = '起動スクリプト.sh'

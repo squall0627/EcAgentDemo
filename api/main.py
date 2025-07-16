@@ -5,7 +5,7 @@ import sys
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from api.routers import product_api, agent_api, html_api, top_page_api, chat_api, order_api, settings_api
+from api.routers import product_api, agent_api, html_api, top_page_api, chat_api, order_api, settings_api, table_api
 from db.database import init_db
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -59,6 +59,7 @@ app.include_router(agent_api.router, prefix="/api/agent", tags=["agent"])
 app.include_router(html_api.router, prefix="/api/html", tags=["html"])
 app.include_router(chat_api.router, prefix="/api/chat", tags=["chat"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
+app.include_router(table_api.router, prefix="/api", tags=["table"])
 
 
 @app.get("/")

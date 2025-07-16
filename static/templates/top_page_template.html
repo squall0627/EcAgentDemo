@@ -22,6 +22,52 @@
         </div>
     </div>
 
+    <!-- テーブル照会モーダル用オーバーレイ -->
+    <div class="table-overlay" id="tableOverlay" onclick="closeTableViewer()"></div>
+
+    <!-- テーブル照会モーダル -->
+    <div class="table-modal" id="tableModal">
+        <div class="table-modal-header">
+            <h3 style="margin: 0;">📊 テーブル照会</h3>
+            <button class="table-close-btn" onclick="closeTableViewer()">×</button>
+        </div>
+
+        <!-- テーブル選択タブ -->
+        <div class="table-tabs">
+            <button class="table-tab active" onclick="switchTable('products')">商品テーブル</button>
+            <button class="table-tab" onclick="switchTable('orders')">注文テーブル</button>
+            <button class="table-tab" onclick="switchTable('order_items')">注文アイテムテーブル</button>
+        </div>
+
+        <!-- 検索フィルター -->
+        <div class="table-filters" id="tableFilters">
+            <!-- フィルターはJavaScriptで動的に生成 -->
+        </div>
+
+        <!-- ページネーション設定 -->
+        <div class="table-pagination-controls">
+            <label>表示件数: 
+                <select id="limitSelect" onchange="updateLimit()">
+                    <option value="10">10件</option>
+                    <option value="25" selected>25件</option>
+                    <option value="50">50件</option>
+                    <option value="100">100件</option>
+                </select>
+            </label>
+            <button class="reimport-btn" onclick="confirmReimportData()">データクリア・再インポート</button>
+        </div>
+
+        <!-- テーブルデータ表示エリア -->
+        <div class="table-content" id="tableContent">
+            <div class="loading">データを読み込み中...</div>
+        </div>
+
+        <!-- ページネーション -->
+        <div class="table-pagination" id="tablePagination">
+            <!-- ページネーションはJavaScriptで動的に生成 -->
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <div class="header-content">
@@ -41,6 +87,7 @@
         <div class="session-info">
             <span>📝 セッションID: <span id="sessionId"></span></span>
             <div class="session-actions">
+                <button class="table-btn" onclick="openTableViewer()">テーブル照会</button>
                 <button class="history-btn" onclick="openHistorySidebar()">履歴表示</button>
                 <button class="new-chat-btn" onclick="startNewChat()">新しいチャット</button>
             </div>
@@ -459,6 +506,388 @@
             } catch (error) {
                 console.error('価格情報の取得に失敗しました:', error);
                 pricing.innerHTML = '';
+            }
+        }
+
+        // テーブル照会機能
+        let currentTable = 'products';
+        let currentPage = 1;
+        let currentLimit = 25;
+        let currentFilters = {};
+        let currentSort = { field: 'jancode', direction: 'asc' };
+
+        // テーブル照会モーダルを開く
+        function openTableViewer() {
+            document.getElementById('tableModal').classList.add('open');
+            document.getElementById('tableOverlay').classList.add('open');
+            switchTable('products');
+        }
+
+        // テーブル照会モーダルを閉じる
+        function closeTableViewer() {
+            document.getElementById('tableModal').classList.remove('open');
+            document.getElementById('tableOverlay').classList.remove('open');
+        }
+
+        // テーブルを切り替え
+        function switchTable(tableName) {
+            currentTable = tableName;
+            currentPage = 1;
+            currentFilters = {};
+
+            // タブの状態を更新
+            document.querySelectorAll('.table-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.textContent.includes(getTableDisplayName(tableName))) {
+                    tab.classList.add('active');
+                }
+            });
+
+            // フィルターを生成
+            generateFilters(tableName);
+
+            // データを読み込み
+            loadTableData();
+        }
+
+        // テーブル表示名を取得
+        function getTableDisplayName(tableName) {
+            const displayNames = {
+                'products': '商品テーブル',
+                'orders': '注文テーブル',
+                'order_items': '注文アイテムテーブル'
+            };
+            return displayNames[tableName] || tableName;
+        }
+
+        // フィルターを動的生成
+        function generateFilters(tableName) {
+            const filtersContainer = document.getElementById('tableFilters');
+            let filtersHtml = '<div class="filter-row">';
+
+            if (tableName === 'products') {
+                filtersHtml += `
+                    <input type="text" id="filter_jancode" placeholder="JANコード" onchange="applyFilters()">
+                    <input type="text" id="filter_name_jp" placeholder="日本語名" onchange="applyFilters()">
+                    <input type="text" id="filter_category" placeholder="カテゴリ" onchange="applyFilters()">
+                    <select id="filter_status" onchange="applyFilters()">
+                        <option value="">ステータス</option>
+                        <option value="published">公開</option>
+                        <option value="unpublished">非公開</option>
+                    </select>
+                    <input type="number" id="filter_stock_min" placeholder="最小在庫" onchange="applyFilters()">
+                    <input type="number" id="filter_stock_max" placeholder="最大在庫" onchange="applyFilters()">
+                `;
+            } else if (tableName === 'orders') {
+                filtersHtml += `
+                    <input type="text" id="filter_order_id" placeholder="注文ID" onchange="applyFilters()">
+                    <input type="text" id="filter_customer_name" placeholder="顧客名" onchange="applyFilters()">
+                    <select id="filter_order_status" onchange="applyFilters()">
+                        <option value="">注文ステータス</option>
+                        <option value="pending">保留中</option>
+                        <option value="confirmed">確認済み</option>
+                        <option value="processing">処理中</option>
+                        <option value="shipped">発送済み</option>
+                        <option value="delivered">配達済み</option>
+                        <option value="cancelled">キャンセル</option>
+                    </select>
+                    <select id="filter_payment_status" onchange="applyFilters()">
+                        <option value="">支払いステータス</option>
+                        <option value="unpaid">未払い</option>
+                        <option value="paid">支払い済み</option>
+                        <option value="refunded">返金済み</option>
+                    </select>
+                `;
+            } else if (tableName === 'order_items') {
+                filtersHtml += `
+                    <input type="text" id="filter_order_id" placeholder="注文ID" onchange="applyFilters()">
+                    <input type="text" id="filter_jancode" placeholder="JANコード" onchange="applyFilters()">
+                    <input type="text" id="filter_product_name" placeholder="商品名" onchange="applyFilters()">
+                    <input type="number" id="filter_quantity_min" placeholder="最小数量" onchange="applyFilters()">
+                    <input type="number" id="filter_quantity_max" placeholder="最大数量" onchange="applyFilters()">
+                `;
+            }
+
+            filtersHtml += '</div>';
+            filtersContainer.innerHTML = filtersHtml;
+        }
+
+        // フィルターを適用
+        function applyFilters() {
+            currentFilters = {};
+            currentPage = 1;
+
+            // フィルター値を収集
+            document.querySelectorAll('#tableFilters input, #tableFilters select').forEach(input => {
+                if (input.value) {
+                    const filterName = input.id.replace('filter_', '');
+                    currentFilters[filterName] = input.value;
+                }
+            });
+
+            loadTableData();
+        }
+
+        // テーブルデータを読み込み
+        async function loadTableData() {
+            const tableContent = document.getElementById('tableContent');
+            tableContent.innerHTML = '<div class="loading">データを読み込み中...</div>';
+
+            try {
+                // APIエンドポイントを構築
+                let url = `/api/table/${currentTable}?page=${currentPage}&limit=${currentLimit}`;
+                url += `&order_by=${currentSort.field}&order_direction=${currentSort.direction}`;
+
+                // フィルターパラメータを追加
+                Object.keys(currentFilters).forEach(key => {
+                    url += `&${key}=${encodeURIComponent(currentFilters[key])}`;
+                });
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderTable(data);
+                    renderPagination(data);
+                } else {
+                    tableContent.innerHTML = `<div class="error">エラー: ${data.detail}</div>`;
+                }
+            } catch (error) {
+                console.error('データ読み込みエラー:', error);
+                tableContent.innerHTML = '<div class="error">データの読み込みに失敗しました</div>';
+            }
+        }
+
+        // テーブルを描画
+        function renderTable(data) {
+            const tableContent = document.getElementById('tableContent');
+
+            if (!data.data || data.data.length === 0) {
+                tableContent.innerHTML = '<div class="no-data">データがありません</div>';
+                return;
+            }
+
+            let html = '<table class="data-table"><thead><tr>';
+
+            // ヘッダーを生成
+            const columns = getTableColumns(currentTable);
+            columns.forEach(col => {
+                const sortIcon = currentSort.field === col.field ? 
+                    (currentSort.direction === 'asc' ? '↑' : '↓') : '';
+                html += `<th onclick="sortTable('${col.field}')">${col.label} ${sortIcon}</th>`;
+            });
+            html += '<th>操作</th></tr></thead><tbody>';
+
+            // データ行を生成
+            data.data.forEach(row => {
+                html += '<tr>';
+                columns.forEach(col => {
+                    const value = row[col.field] || '';
+                    const isEditable = col.editable && col.field !== getPrimaryKey(currentTable);
+
+                    if (isEditable) {
+                        html += `<td><input type="${col.type || 'text'}" value="${value}" 
+                                onblur="updateCell('${getPrimaryKey(currentTable)}', '${row[getPrimaryKey(currentTable)]}', '${col.field}', this.value)"></td>`;
+                    } else {
+                        html += `<td>${value}</td>`;
+                    }
+                });
+                html += `<td><button onclick="deleteRow('${row[getPrimaryKey(currentTable)]}')">削除</button></td>`;
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            tableContent.innerHTML = html;
+        }
+
+        // テーブル列定義を取得
+        function getTableColumns(tableName) {
+            const columns = {
+                products: [
+                    { field: 'jancode', label: 'JANコード', editable: false },
+                    { field: 'name_zh', label: '中国語名', editable: true },
+                    { field: 'name_en', label: '英語名', editable: true },
+                    { field: 'name_jp', label: '日本語名', editable: true },
+                    { field: 'category', label: 'カテゴリ', editable: true },
+                    { field: 'status', label: 'ステータス', editable: true },
+                    { field: 'stock', label: '在庫', editable: true, type: 'number' },
+                    { field: 'price', label: '価格', editable: true, type: 'number' },
+                    { field: 'description', label: '説明', editable: true }
+                ],
+                orders: [
+                    { field: 'order_id', label: '注文ID', editable: false },
+                    { field: 'customer_id', label: '顧客ID', editable: true },
+                    { field: 'customer_name', label: '顧客名', editable: true },
+                    { field: 'customer_email', label: 'メール', editable: true },
+                    { field: 'order_status', label: '注文ステータス', editable: true },
+                    { field: 'payment_status', label: '支払いステータス', editable: true },
+                    { field: 'shipping_status', label: '配送ステータス', editable: true },
+                    { field: 'total_amount', label: '合計金額', editable: true, type: 'number' },
+                    { field: 'order_date', label: '注文日', editable: false }
+                ],
+                order_items: [
+                    { field: 'item_id', label: 'アイテムID', editable: false },
+                    { field: 'order_id', label: '注文ID', editable: true },
+                    { field: 'jancode', label: 'JANコード', editable: true },
+                    { field: 'product_name', label: '商品名', editable: true },
+                    { field: 'quantity', label: '数量', editable: true, type: 'number' },
+                    { field: 'unit_price', label: '単価', editable: true, type: 'number' },
+                    { field: 'total_price', label: '小計', editable: true, type: 'number' }
+                ]
+            };
+            return columns[tableName] || [];
+        }
+
+        // 主キーを取得
+        function getPrimaryKey(tableName) {
+            const primaryKeys = {
+                products: 'jancode',
+                orders: 'order_id',
+                order_items: 'item_id'
+            };
+            return primaryKeys[tableName];
+        }
+
+        // ソート
+        function sortTable(field) {
+            if (currentSort.field === field) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.field = field;
+                currentSort.direction = 'asc';
+            }
+            currentPage = 1;
+            loadTableData();
+        }
+
+        // セル更新
+        async function updateCell(primaryKeyField, primaryKeyValue, field, value) {
+            try {
+                const updateData = {};
+                updateData[field] = value;
+
+                const response = await fetch(`/api/table/${currentTable}/${primaryKeyValue}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(updateData)
+                });
+
+                if (response.ok) {
+                    showNotification('データが更新されました', 'success');
+                } else {
+                    const error = await response.json();
+                    showNotification(`更新エラー: ${error.detail}`, 'error');
+                    loadTableData(); // データを再読み込み
+                }
+            } catch (error) {
+                console.error('更新エラー:', error);
+                showNotification('更新に失敗しました', 'error');
+                loadTableData();
+            }
+        }
+
+        // 行削除
+        async function deleteRow(primaryKeyValue) {
+            if (!confirm('このデータを削除しますか？この操作は元に戻せません。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/table/${currentTable}/${primaryKeyValue}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showNotification('データが削除されました', 'success');
+                    loadTableData(); // テーブルデータを再読み込み
+                } else {
+                    const error = await response.json();
+                    showNotification(`削除エラー: ${error.detail}`, 'error');
+                }
+            } catch (error) {
+                console.error('削除エラー:', error);
+                showNotification('削除に失敗しました', 'error');
+            }
+        }
+
+        // ページネーション描画
+        function renderPagination(data) {
+            const paginationContainer = document.getElementById('tablePagination');
+
+            if (data.total_pages <= 1) {
+                paginationContainer.innerHTML = '';
+                return;
+            }
+
+            let html = '<div class="pagination-info">';
+            html += `${data.total}件中 ${((data.page - 1) * data.limit) + 1}-${Math.min(data.page * data.limit, data.total)}件を表示`;
+            html += '</div><div class="pagination-buttons">';
+
+            // 前のページ
+            if (data.page > 1) {
+                html += `<button onclick="changePage(${data.page - 1})">前へ</button>`;
+            }
+
+            // ページ番号
+            const startPage = Math.max(1, data.page - 2);
+            const endPage = Math.min(data.total_pages, data.page + 2);
+
+            for (let i = startPage; i <= endPage; i++) {
+                const activeClass = i === data.page ? 'active' : '';
+                html += `<button class="${activeClass}" onclick="changePage(${i})">${i}</button>`;
+            }
+
+            // 次のページ
+            if (data.page < data.total_pages) {
+                html += `<button onclick="changePage(${data.page + 1})">次へ</button>`;
+            }
+
+            html += '</div>';
+            paginationContainer.innerHTML = html;
+        }
+
+        // ページ変更
+        function changePage(page) {
+            currentPage = page;
+            loadTableData();
+        }
+
+        // 表示件数変更
+        function updateLimit() {
+            const limitSelect = document.getElementById('limitSelect');
+            currentLimit = parseInt(limitSelect.value);
+            currentPage = 1;
+            loadTableData();
+        }
+
+        // データクリア・再インポート確認
+        function confirmReimportData() {
+            if (confirm('すべてのデータがクリアされ、テストデータが再インポートされます。この操作は元に戻せません。続行しますか？')) {
+                reimportData();
+            }
+        }
+
+        // データクリア・再インポート実行
+        async function reimportData() {
+            try {
+                showNotification('データを再インポート中...', 'info');
+
+                const response = await fetch('/api/table/clear_and_reimport', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showNotification('データの再インポートが完了しました', 'success');
+                    loadTableData(); // テーブルデータを再読み込み
+                } else {
+                    const error = await response.json();
+                    showNotification(`再インポートエラー: ${error.detail}`, 'error');
+                }
+            } catch (error) {
+                console.error('再インポートエラー:', error);
+                showNotification('再インポートに失敗しました', 'error');
             }
         }
 

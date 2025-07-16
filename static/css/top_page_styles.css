@@ -787,9 +787,9 @@ body {
 }
 
 .llm-indicator { 
-    width: 12px; 
-    height: 12px; 
-    border-radius: 50%; 
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
     background: #6c757d;
     transition: background-color 0.3s;
 }
@@ -1282,4 +1282,306 @@ body {
     color: #495057;
     flex: 1;
     word-wrap: break-word;
+}
+
+/* テーブル照会機能のスタイル */
+.table-btn { 
+    background: #17a2b8; 
+    color: white; 
+    border: none; 
+    padding: 8px 16px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-size: 12px; 
+}
+.table-btn:hover { background: #138496; }
+
+/* テーブル照会モーダルのスタイル */
+.table-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.table-overlay.open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.table-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.9);
+    width: 90%;
+    max-width: 1200px;
+    height: 80%;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-modal.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+.table-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+
+.table-close-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.table-close-btn:hover { background: #5a6268; }
+
+/* テーブルタブのスタイル */
+.table-tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.table-tab {
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #495057;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.table-tab:hover {
+    background: #e9ecef;
+}
+
+.table-tab.active {
+    color: #007bff;
+    border-bottom-color: #007bff;
+    background: white;
+}
+
+/* フィルターのスタイル */
+.table-filters {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.filter-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.filter-row input,
+.filter-row select {
+    padding: 6px 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    min-width: 120px;
+}
+
+.filter-row input:focus,
+.filter-row select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* ページネーション設定のスタイル */
+.table-pagination-controls {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.table-pagination-controls label {
+    font-size: 14px;
+    color: #495057;
+}
+
+.table-pagination-controls select {
+    margin-left: 8px;
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.reimport-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.reimport-btn:hover { background: #c82333; }
+
+/* テーブルコンテンツのスタイル */
+.table-content {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.data-table th {
+    background: #007bff;
+    color: white;
+    padding: 12px 8px;
+    text-align: left;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.data-table th:hover {
+    background: #0056b3;
+}
+
+.data-table td {
+    padding: 8px;
+    border-bottom: 1px solid #e9ecef;
+    vertical-align: middle;
+}
+
+.data-table tr:hover {
+    background: #f8f9fa;
+}
+
+.data-table input {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.data-table input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.data-table button {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.data-table button:hover { background: #c82333; }
+
+/* ページネーションのスタイル */
+.table-pagination {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pagination-info {
+    font-size: 14px;
+    color: #495057;
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.pagination-buttons button {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.pagination-buttons button:hover {
+    background: #0056b3;
+}
+
+.pagination-buttons button.active {
+    background: #28a745;
+}
+
+.pagination-buttons button:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* ローディングとエラー表示 - テーブルコンテンツ内のみに適用 */
+.table-content .loading, .table-content .error, .table-content .no-data {
+    text-align: center;
+    padding: 40px;
+    font-size: 16px;
+    color: #6c757d;
+}
+
+.table-content .error {
+    color: #dc3545;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+}
+
+.table-content .no-data {
+    color: #6c757d;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
 }

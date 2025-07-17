@@ -126,13 +126,20 @@
                     </div>
                 </div>
 
-                <div class="examples">
-                    <strong>💡 使用例:</strong>
-                    <ul>
-                        <li>"コーヒー商品を検索してください"</li>
-                        <li>"在庫が少ない商品を棚上げしてください"</li>
-                        <li>"JANコード123の商品のカテゴリーを設定してください"</li>
-                    </ul>
+                <div class="examples" id="examplesSection">
+                    <div class="examples-header">
+                        <strong>💡 使用例:</strong>
+                        <button id="toggleExamplesBtn" class="toggle-examples-btn" title="使用例を折りたたむ/展開する">
+                            <span class="toggle-icon">▼</span>
+                        </button>
+                    </div>
+                    <div class="examples-content" id="examplesContent">
+                        <ul>
+                            <li>"コーヒー商品を検索してください"</li>
+                            <li>"在庫が少ない商品を棚上げしてください"</li>
+                            <li>"JANコード123の商品のカテゴリーを設定してください"</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -2010,9 +2017,44 @@
             }
         });
 
+        // 使用例セクションの折りたたみ/展開機能
+        function toggleExamplesSection() {
+            const examplesSection = document.getElementById('examplesSection');
+            const toggleIcon = document.querySelector('.toggle-icon');
+            
+            // 状態を切り替え
+            examplesSection.classList.toggle('collapsed');
+            
+            // 状態を保存
+            const isCollapsed = examplesSection.classList.contains('collapsed');
+            localStorage.setItem('examplesSectionCollapsed', isCollapsed);
+            
+            // ボタンのタイトルを更新
+            const toggleBtn = document.getElementById('toggleExamplesBtn');
+            toggleBtn.title = isCollapsed ? "使用例を展開する" : "使用例を折りたたむ";
+        }
+        
+        // 使用例セクションの状態を復元
+        function restoreExamplesSection() {
+            const examplesSection = document.getElementById('examplesSection');
+            const isCollapsed = localStorage.getItem('examplesSectionCollapsed') === 'true';
+            
+            if (isCollapsed) {
+                examplesSection.classList.add('collapsed');
+                
+                // ボタンのタイトルを更新
+                const toggleBtn = document.getElementById('toggleExamplesBtn');
+                toggleBtn.title = "使用例を展開する";
+            }
+        }
+        
+        // 使用例セクションのトグルボタンにイベントリスナーを設定
+        document.getElementById('toggleExamplesBtn').addEventListener('click', toggleExamplesSection);
+
         // 初期化
         restoreSelections();
         updateLLMStatus();
+        restoreExamplesSection();
 
         // ページ読み込み時に会話履歴を読み込み
         window.addEventListener('load', async function() {

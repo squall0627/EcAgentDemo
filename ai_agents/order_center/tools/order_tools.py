@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 from langchain.tools import BaseTool
-from langchain.tools import Tool
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Type
 import requests
@@ -57,80 +56,77 @@ class OrderDetailInput(BaseModel):
 class CancelOrderInput(BaseModel):
     order_id: str = Field(description="Order ID to cancel")
 
-# 注文検索ツール関数
-def search_orders_tool_fn(
-    order_id: str | None = None,
-    customer_id: str | None = None,
-    customer_name: str | None = None,
-    customer_email: str | None = None,
-    order_status: str | None = None,
-    payment_status: str | None = None,
-    shipping_status: str | None = None,
-    total_amount_min: float | None = None,
-    total_amount_max: float | None = None,
-    order_by: str | None = "order_date",
-    order_direction: str | None = "desc",
-    limit: int | None = 10
-):
-    """Search for orders with various filters and sorting options"""
-    try:
-        # パラメータ構築
-        params = {}
-        if order_id:
-            params["order_id"] = order_id
-        if customer_id:
-            params["customer_id"] = customer_id
-        if customer_name:
-            params["customer_name"] = customer_name
-        if customer_email:
-            params["customer_email"] = customer_email
-        if order_status:
-            params["order_status"] = order_status
-        if payment_status:
-            params["payment_status"] = payment_status
-        if shipping_status:
-            params["shipping_status"] = shipping_status
-        if total_amount_min is not None:
-            params["total_amount_min"] = total_amount_min
-        if total_amount_max is not None:
-            params["total_amount_max"] = total_amount_max
-        if order_by:
-            params["order_by"] = order_by
-        if order_direction:
-            params["order_direction"] = order_direction
-        if limit:
-            params["limit"] = limit
-
-        # API呼び出し
-        response = requests.get(f"{API_BASE_URL}/api/order/orders", params=params)
-
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "success": True,
-                "data": data,
-                "message": f"Found {data.get('total_count', 0)} orders"
-            }
-        else:
-            return {
-                "success": False,
-                "error": f"API error: {response.status_code} - {response.text}",
-                "message": "Failed to search orders"
-            }
-
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Error occurred while searching orders"
-        }
-
 # 注文検索ツール
-search_orders_tool = Tool(
-    name="search_orders",
-    description="Search for orders with various filters including order ID, customer information, status, and amount ranges. Supports sorting and pagination.",
-    func=search_orders_tool_fn
-)
+class SearchOrdersTool(BaseTool):
+    name: str = "search_orders"
+    description: str = "Search for orders with various filters including order ID, customer information, status, and amount ranges. Supports sorting and pagination."
+    args_schema: Type[BaseModel] = OrderSearchInput
+
+    def _run(self, 
+             order_id: Optional[str] = None,
+             customer_id: Optional[str] = None,
+             customer_name: Optional[str] = None,
+             customer_email: Optional[str] = None,
+             order_status: Optional[str] = None,
+             payment_status: Optional[str] = None,
+             shipping_status: Optional[str] = None,
+             total_amount_min: Optional[float] = None,
+             total_amount_max: Optional[float] = None,
+             order_by: Optional[str] = "order_date",
+             order_direction: Optional[str] = "desc",
+             limit: Optional[int] = 10) -> str:
+        """Search for orders with various filters and sorting options"""
+        try:
+            # パラメータ構築
+            params = {}
+            if order_id:
+                params["order_id"] = order_id
+            if customer_id:
+                params["customer_id"] = customer_id
+            if customer_name:
+                params["customer_name"] = customer_name
+            if customer_email:
+                params["customer_email"] = customer_email
+            if order_status:
+                params["order_status"] = order_status
+            if payment_status:
+                params["payment_status"] = payment_status
+            if shipping_status:
+                params["shipping_status"] = shipping_status
+            if total_amount_min is not None:
+                params["total_amount_min"] = total_amount_min
+            if total_amount_max is not None:
+                params["total_amount_max"] = total_amount_max
+            if order_by:
+                params["order_by"] = order_by
+            if order_direction:
+                params["order_direction"] = order_direction
+            if limit:
+                params["limit"] = limit
+
+            # API呼び出し
+            response = requests.get(f"{API_BASE_URL}/api/order/orders", params=params)
+
+            if response.status_code == 200:
+                data = response.json()
+                return json.dumps({
+                    "success": True,
+                    "data": data,
+                    "message": f"Found {data.get('total_count', 0)} orders"
+                }, ensure_ascii=False, indent=2)
+            else:
+                return json.dumps({
+                    "success": False,
+                    "error": f"API error: {response.status_code} - {response.text}",
+                    "message": "Failed to search orders"
+                }, ensure_ascii=False)
+
+        except Exception as e:
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "message": "Error occurred while searching orders"
+            }, ensure_ascii=False)
 
 # 注文作成ツール
 class CreateOrderTool(BaseTool):

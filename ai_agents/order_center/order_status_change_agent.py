@@ -9,7 +9,7 @@ from ai_agents.order_center.tools.order_tools import (
     UpdateOrderStatusTool,
     UpdatePaymentStatusTool,
     UpdateShippingStatusTool,
-    search_orders_tool
+    SearchOrdersTool
 )
 
 
@@ -42,7 +42,7 @@ class OrderStatusChangeAgent(BaseAgent):
             UpdateOrderStatusTool(),
             UpdatePaymentStatusTool(),
             UpdateShippingStatusTool(),
-            search_orders_tool
+            SearchOrdersTool()
         ]
 
     def _get_system_message_content(self, is_entry_agent: bool = False) -> str:

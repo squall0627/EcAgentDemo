@@ -6,7 +6,7 @@ from ai_agents.base_agent import BaseAgent, BaseAgentState
 from ai_agents.intelligent_agent_router import AgentCapability
 from ai_agents.order_center.tools.order_tools import (
     GetOrderDetailTool,
-    search_orders_tool
+    SearchOrdersTool
 )
 
 
@@ -36,7 +36,7 @@ class OrderDetailAgent(BaseAgent):
         """OrderDetailAgent用ツールを初期化"""
         return [
             GetOrderDetailTool(),
-            search_orders_tool
+            SearchOrdersTool()
         ]
 
     def _get_system_message_content(self, is_entry_agent: bool = False) -> str:

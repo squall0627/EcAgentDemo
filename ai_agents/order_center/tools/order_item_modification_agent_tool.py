@@ -8,6 +8,8 @@ from ai_agents.order_center.order_item_modification_agent import OrderItemModifi
 class OrderItemModificationToolInput(BaseToolInput):
     """注文商品変更管理ツール入力スキーマ"""
     command: str = Field(description="Order item modification management command to execute")
+    kwargs: Optional[dict] = Field(default=None,
+                                   description="Additional keyword arguments for the command, you MUST put all of the parameters that you want to pass to the command here")
     user_input: Optional[str] = Field(default=None, description="User input (optional)")
     session_id: Optional[str] = Field(default=None, description="Session ID (optional)")
     user_id: Optional[str] = Field(default=None, description="User ID (optional)")
@@ -29,6 +31,8 @@ class OrderItemModificationAgentTool(BaseAgentTool):
     def __init__(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """注文商品変更管理エージェントツール初期化"""
         super().__init__(api_key=api_key, llm_type=llm_type, use_langfuse=use_langfuse)
+        inside_tools_description = self.agent.generate_tool_descriptions()
+        self.description = f"Order item modification management agent tool for executing commands. This agent has the following tools: {inside_tools_description}"
 
     def _initialize_agent(self, api_key: str, llm_type: str = None, use_langfuse: bool = True):
         """Initialize the OrderItemModificationAgent with the provided parameters"""

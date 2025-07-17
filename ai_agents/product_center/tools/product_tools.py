@@ -30,29 +30,29 @@ class ProductSearchInput(BaseModel):
     limit: Optional[int] = Field(default=10, description="Maximum number of results to return")
 
 class StockUpdateInput(BaseModel):
-    jancode: str = Field(description="更新する商品のJANコード")
-    stock_amount: int = Field(description="新しい在庫数")
+    jancode: str = Field(description="JAN code of the product to update stock quantity")
+    stock_amount: int = Field(description="New stock quantity to set")
 
 # 新しい価格更新用の入力モデル
 class PriceUpdateInput(BaseModel):
-    jancode: str = Field(description="更新する商品のJANコード")
-    price: float = Field(description="新しい価格")
+    jancode: str = Field(description="JAN code of the product to update price")
+    price: float = Field(description="New price to set (must be greater than 0)")
 
 # 新しい商品説明更新用の入力モデル
 class DescriptionUpdateInput(BaseModel):
-    jancode: str = Field(description="更新する商品のJANコード")
-    description: str = Field(description="新しい商品説明")
+    jancode: str = Field(description="JAN code of the product to update description")
+    description: str = Field(description="New product description text")
 
 class CategoryUpdateInput(BaseModel):
-    jancode: str = Field(description="更新する商品のJANコード")
-    category: str = Field(description="新しいカテゴリー")
+    jancode: str = Field(description="JAN code of the product to update category")
+    category: str = Field(description="New category name to assign")
 
 class BulkStockUpdateInput(BaseModel):
-    products: List[Dict[str, Any]] = Field(description="一括在庫更新のリスト")
+    products: List[Dict[str, Any]] = Field(description="List of products for bulk stock update. Each item should contain 'jancode' and 'stock_amount' fields")
 
 # 新しい一括価格更新用の入力モデル
 class BulkPriceUpdateInput(BaseModel):
-    products: List[Dict[str, Any]] = Field(description="一括価格更新のリスト")
+    products: List[Dict[str, Any]] = Field(description="List of products for bulk price update. Each item should contain 'jancode' and 'price' fields")
 
 class ValidateProductInput(BaseModel):
     jancode: str = Field(description="JAN code of the product to validate for publishing eligibility")
@@ -162,7 +162,29 @@ Multiple conditions can be combined. Results are returned in structured JSON for
 
 class UpdateStockTool(BaseTool):
     name: str = "update_stock"
-    description: str = "商品在庫更新ツール"
+    description: str = """Product Stock Update Tool
+This tool provides individual product stock quantity management functionality for EC back-office operations.
+
+## Core Features
+- Update stock quantity for a single product by JAN code
+- Real-time inventory adjustment
+- Stock level validation and error handling
+- Immediate database synchronization
+- Comprehensive operation result reporting
+
+## Usage Examples
+- "JAN『4901234567890』の在庫を50に変更" → jancode="4901234567890", stock_amount=50
+- "商品ABC123の在庫を100に設定" → jancode="ABC123", stock_amount=100
+- "在庫を0にして完売状態にする" → jancode="[specific_jancode]", stock_amount=0
+- "緊急在庫補充で500個追加" → jancode="[specific_jancode]", stock_amount=500
+
+## Operation Flow
+1. Validate JAN code existence
+2. Check current stock level
+3. Update stock quantity in database
+4. Return operation result with updated product information
+
+Returns structured JSON response with operation success status and updated product details."""
     args_schema: Type[BaseModel] = StockUpdateInput
 
     def _run(self, jancode: str, stock_amount: int) -> str:
@@ -187,7 +209,31 @@ class UpdateStockTool(BaseTool):
 # 新しい価格更新ツール
 class UpdatePriceTool(BaseTool):
     name: str = "update_price"
-    description: str = "商品価格更新ツール"
+    description: str = """Product Price Update Tool
+This tool provides individual product price management functionality for EC back-office operations.
+
+## Core Features
+- Update price for a single product by JAN code
+- Real-time price adjustment
+- Price validation (must be positive value)
+- Currency format handling
+- Immediate database synchronization
+- Comprehensive operation result reporting
+
+## Usage Examples
+- "JAN『4901234567890』の価格を1500円に設定" → jancode="4901234567890", price=1500.0
+- "商品ABC123の価格を980円に変更" → jancode="ABC123", price=980.0
+- "セール価格800円に更新" → jancode="[specific_jancode]", price=800.0
+- "定価2000円に戻す" → jancode="[specific_jancode]", price=2000.0
+
+## Operation Flow
+1. Validate JAN code existence
+2. Check current price
+3. Validate new price (must be > 0)
+4. Update price in database
+5. Return operation result with updated product information
+
+Returns structured JSON response with operation success status and updated product details."""
     args_schema: Type[BaseModel] = PriceUpdateInput
 
     def _run(self, jancode: str, price: float) -> str:
@@ -212,7 +258,30 @@ class UpdatePriceTool(BaseTool):
 # 新しい商品説明更新ツール
 class UpdateDescriptionTool(BaseTool):
     name: str = "update_description"
-    description: str = "商品説明更新ツール"
+    description: str = """Product Description Update Tool
+This tool provides individual product description management functionality for EC back-office operations.
+
+## Core Features
+- Update product description for a single product by JAN code
+- Multi-language description support
+- Rich text content handling
+- Real-time content updates
+- Immediate database synchronization
+- Comprehensive operation result reporting
+
+## Usage Examples
+- "JAN『4901234567890』の説明を更新" → jancode="4901234567890", description="新しい商品説明文"
+- "商品ABC123の詳細説明を変更" → jancode="ABC123", description="詳細な商品説明"
+- "限定商品の説明を追加" → jancode="[specific_jancode]", description="期間限定商品です"
+- "オーガニック認証情報を追加" → jancode="[specific_jancode]", description="オーガニック認証取得商品"
+
+## Operation Flow
+1. Validate JAN code existence
+2. Check current description
+3. Update description in database
+4. Return operation result with updated product information
+
+Returns structured JSON response with operation success status and updated product details."""
     args_schema: Type[BaseModel] = DescriptionUpdateInput
 
     def _run(self, jancode: str, description: str) -> str:
@@ -236,7 +305,31 @@ class UpdateDescriptionTool(BaseTool):
 
 class UpdateCategoryTool(BaseTool):
     name: str = "update_category"
-    description: str = "商品カテゴリー更新ツール"
+    description: str = """Product Category Update Tool
+This tool provides individual product category management functionality for EC back-office operations.
+
+## Core Features
+- Update product category for a single product by JAN code
+- Category validation and consistency checks
+- Real-time category assignment
+- Product organization and classification
+- Immediate database synchronization
+- Comprehensive operation result reporting
+
+## Usage Examples
+- "JAN『4901234567890』のカテゴリーを飲料に変更" → jancode="4901234567890", category="飲料"
+- "商品ABC123を食品カテゴリーに移動" → jancode="ABC123", category="食品"
+- "新商品を雑貨カテゴリーに分類" → jancode="[specific_jancode]", category="雑貨"
+- "季節商品カテゴリーに変更" → jancode="[specific_jancode]", category="季節商品"
+
+## Operation Flow
+1. Validate JAN code existence
+2. Check current category
+3. Validate new category name
+4. Update category in database
+5. Return operation result with updated product information
+
+Returns structured JSON response with operation success status and updated product details."""
     args_schema: Type[BaseModel] = CategoryUpdateInput
 
     def _run(self, jancode: str, category: str) -> str:
@@ -260,7 +353,34 @@ class UpdateCategoryTool(BaseTool):
 
 class BulkUpdateStockTool(BaseTool):
     name: str = "bulk_update_stock"
-    description: str = "商品在庫一括更新ツール"
+    description: str = """Bulk Product Stock Update Tool
+This tool provides batch stock quantity management functionality for multiple products simultaneously in EC back-office operations.
+
+## Core Features
+- Update stock quantities for multiple products in a single operation
+- Batch processing for operational efficiency
+- Individual product validation within batch
+- Partial success handling (continues even if some products fail)
+- Comprehensive batch operation result reporting
+- Transaction-safe bulk operations
+
+## Usage Examples
+- "すべてのコーヒー商品の在庫を100に変更" → products=[{"jancode": "123456789", "stock_amount": 100}, {"jancode": "987654321", "stock_amount": 100}]
+- "在庫不足商品を一括で補充" → products=[{"jancode": "ABC123", "stock_amount": 50}, {"jancode": "XYZ789", "stock_amount": 30}]
+- "季節商品の在庫を一括リセット" → products=[{"jancode": "SEASON1", "stock_amount": 0}, {"jancode": "SEASON2", "stock_amount": 0}]
+
+## Operation Flow
+1. Validate all JAN codes in the batch
+2. Process each product stock update
+3. Handle individual failures gracefully
+4. Return comprehensive batch operation results
+
+## Input Format
+Each product object must contain:
+- jancode: Product JAN code (string)
+- stock_amount: New stock quantity (integer)
+
+Returns structured JSON response with batch operation results, including success/failure status for each product."""
     args_schema: Type[BaseModel] = BulkStockUpdateInput
 
     def _run(self, products: List[Dict[str, Any]]) -> str:
@@ -285,7 +405,36 @@ class BulkUpdateStockTool(BaseTool):
 # 新しい一括価格更新ツール
 class BulkUpdatePriceTool(BaseTool):
     name: str = "bulk_update_price"
-    description: str = "商品価格一括更新ツール"
+    description: str = """Bulk Product Price Update Tool
+This tool provides batch price management functionality for multiple products simultaneously in EC back-office operations.
+
+## Core Features
+- Update prices for multiple products in a single operation
+- Batch processing for operational efficiency
+- Individual product validation within batch
+- Price validation (must be positive values)
+- Partial success handling (continues even if some products fail)
+- Comprehensive batch operation result reporting
+- Transaction-safe bulk operations
+
+## Usage Examples
+- "飲料カテゴリーの商品価格を一括で1500円に設定" → products=[{"jancode": "123456789", "price": 1500.0}, {"jancode": "987654321", "price": 1500.0}]
+- "セール価格を一括適用" → products=[{"jancode": "ABC123", "price": 980.0}, {"jancode": "XYZ789", "price": 1200.0}]
+- "定価に一括で戻す" → products=[{"jancode": "SALE1", "price": 2000.0}, {"jancode": "SALE2", "price": 1800.0}]
+
+## Operation Flow
+1. Validate all JAN codes in the batch
+2. Validate all price values (must be > 0)
+3. Process each product price update
+4. Handle individual failures gracefully
+5. Return comprehensive batch operation results
+
+## Input Format
+Each product object must contain:
+- jancode: Product JAN code (string)
+- price: New price (float, must be > 0)
+
+Returns structured JSON response with batch operation results, including success/failure status for each product."""
     args_schema: Type[BaseModel] = BulkPriceUpdateInput
 
     def _run(self, products: List[Dict[str, Any]]) -> str:

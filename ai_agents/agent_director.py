@@ -2,6 +2,7 @@ from typing import List, Any, Dict, Optional
 import json
 
 from langchain_core.messages import AIMessage
+from langchain.schema import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
 from langgraph.constants import START, END
 
@@ -20,6 +21,9 @@ class AgentDirectorState(BaseAgentState):
     grouped_tasks: Optional[Dict[str, List[Dict[str, Any]]]]  # グループ化されたタスク辞書 (Step 3)
     distributed_tasks: Optional[Dict[str, Any]]  # 配信されたタスク結果 (Step 4)
     task_planning_info: Optional[Dict[str, Any]]  # TaskPlanner情報
+    completion_retry_count: Optional[int]  # タスク完了チェックの再試行回数
+    task_completion_status: Optional[str]  # タスク完了状態 ("completed", "incomplete", "failed")
+    incomplete_tasks: Optional[Dict[str, List[Dict[str, Any]]]]  # 未完了タスク（再実行用）
 
 
 class AgentDirector(BaseAgent):
@@ -115,27 +119,32 @@ class AgentDirector(BaseAgent):
 
         except Exception as e:
             print(f"❌ SortedTaskExtractorAndRouter Node エラー: {e}")
-            raise e # TODO: エラー処理を適切に行う
-            # # エラー時はフォールバックタスクを設定
-            # fallback_task = [{
-            #     "target_agent": "product_center_agent_manager",
-            #     "command": {
-            #         "action": "search_product",
-            #         "condition": f"user_request: {user_input}"
-            #     },
-            #     "priority": 1
-            # }]
-            #
-            # state["sorted_routed_tasks"] = fallback_task
-            # state["task_planning_info"] = {
-            #     "step": "1&2_combined",
-            #     "description": "Fallback task created due to extraction/routing error",
-            #     "original_input": user_input,
-            #     "sorted_routed_task_count": 1,
-            #     "error": str(e)
-            # }
-            #
-            # return state
+            # エラー時はフォールバックタスクを設定
+            user_input = state.get("user_input", "")
+            if not user_input:
+                messages = state.get("messages", [])
+                if messages:
+                    user_input = messages[0].content
+
+            fallback_task = [{
+                "target_agent": "ProductCenterAgentManager",
+                "command": {
+                    "action": "search_product",
+                    "condition": f"user_request: {user_input}"
+                },
+                "priority": 1
+            }]
+
+            state["sorted_routed_tasks"] = fallback_task
+            state["task_planning_info"] = {
+                "step": "1&2_combined",
+                "description": "Fallback task created due to extraction/routing error",
+                "original_input": user_input,
+                "sorted_routed_task_count": 1,
+                "error": str(e)
+            }
+
+            return state
 
     def _task_grouper_node(self, state: AgentDirectorState) -> AgentDirectorState:
         """
@@ -317,10 +326,341 @@ class AgentDirector(BaseAgent):
 
             return state
 
+    def _summarize_task_execution_with_llm(self, state: AgentDirectorState, is_completed: bool) -> str:
+        """
+        LLMを使用してタスク実行状況を要約する
+
+        Args:
+            state: AgentDirectorState
+            is_completed: 全タスクが完了したかどうか
+
+        Returns:
+            LLMによる要約メッセージ
+        """
+        try:
+            # ユーザーの元の要求を取得
+            original_user_input = state.get("user_input", "")
+            if not original_user_input:
+                messages = state.get("messages", [])
+                if messages:
+                    original_user_input = messages[0].content
+
+            distributed_tasks = state.get("distributed_tasks", {})
+            execution_results = distributed_tasks.get("execution_results", {})
+            errors = distributed_tasks.get("errors", [])
+            retry_count = state.get("completion_retry_count", 0)
+
+            # タスク実行情報を整理
+            task_summary = {
+                "original_request": original_user_input,
+                "total_agents": distributed_tasks.get("total_agents", 0),
+                "successful_distributions": distributed_tasks.get("successful_distributions", 0),
+                "failed_distributions": distributed_tasks.get("failed_distributions", 0),
+                "retry_count": retry_count,
+                "is_completed": is_completed,
+                "execution_results": {},
+                "errors": errors[:3]  # 最大3つのエラーを含める
+            }
+
+            # 実行結果を整理
+            for agent, result in execution_results.items():
+                if isinstance(result, dict):
+                    task_summary["execution_results"][agent] = {
+                        "message": result.get("message", "実行完了"),
+                        "status": "success" if result.get("message") else "completed"
+                    }
+                else:
+                    task_summary["execution_results"][agent] = {
+                        "message": str(result),
+                        "status": "completed"
+                    }
+
+            # Create LLM prompts in English
+            if is_completed:
+                system_prompt = """You are an excellent task execution result summarizer.
+Please summarize the results of tasks executed in response to user requests in a clear and concise manner.
+
+When summarizing, please pay attention to the following points:
+1. Clearly indicate the user's original request
+2. Specifically describe the results of executed tasks
+3. Emphasize successful content
+4. Avoid technical terms and explain in general language
+5. If there are multiple results, organize them in order of importance
+6. Use a positive and constructive tone
+
+## Response Format
+    - Structured JSON response
+    - MUST Include "html_content" field for direct screen rendering when needed
+    - Include "error" field for error messages in Japanese
+    - Include "next_actions" field for suggested next steps (considering conversation history)
+        * Type: string (single action) OR array of strings (multiple actions)
+
+Please provide a comprehensive summary that follows the structured response format above."""
+            else:
+                system_prompt = """You are an excellent task execution result summarizer.
+Please summarize the results of tasks executed in response to user requests, including any issues, in an understandable manner.
+
+When summarizing, please pay attention to the following points:
+1. Clearly indicate the user's original request
+2. Clearly separate successful tasks from failed tasks
+3. Explain the causes of failures as much as possible
+4. If there are successful parts, evaluate them appropriately
+5. Avoid technical terms and explain in general language
+6. Use a constructive and solution-oriented tone
+7. Appropriately mention the number of retry attempts
+
+## Response Format
+    - Structured JSON response
+    - MUST Include "html_content" field for direct screen rendering when needed
+    - Include "error" field for error messages in Japanese
+    - Include "next_actions" field for suggested next steps (considering conversation history)
+        * Type: string (single action) OR array of strings (multiple actions)
+
+Please provide a comprehensive summary that follows the structured response format above, focusing on both successes and areas that need attention."""
+
+            user_prompt = f"""Please summarize the following task execution information:
+
+【User Request】
+{task_summary['original_request']}
+
+【Execution Status】
+- Total agents: {task_summary['total_agents']}
+- Successful tasks: {task_summary['successful_distributions']}
+- Failed tasks: {task_summary['failed_distributions']}
+- Retry count: {task_summary['retry_count']}
+- Completion status: {'All completed' if is_completed else 'Partially incomplete'}
+
+【Execution Results】"""
+
+            for agent, result in task_summary['execution_results'].items():
+                user_prompt += f"\n- {agent}: {result['message']}"
+
+            if task_summary['errors']:
+                user_prompt += f"\n\n【Error Information】"
+                for i, error in enumerate(task_summary['errors'], 1):
+                    user_prompt += f"\n{i}. {error}"
+
+            user_prompt += "\n\nBased on the above information, please create a comprehensive summary that is easy for users to understand. Remember to follow the structured JSON response format with html_content, error, and next_actions fields as specified."
+
+            # LLMに要約を依頼
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+
+            print(f"🤖 LLMによるタスク実行結果の要約を生成中...")
+            response = self.llm_handler.get_llm().invoke(messages)
+
+            if hasattr(response, 'content'):
+                summary = response.content
+                # JSONブロックを探す（```json...```の形式も対応）
+                if "```json" in summary:
+                    start = summary.find("```json") + 7
+                    end = summary.find("```", start)
+                    json_summary = summary[start:end].strip()
+                elif "```" in summary:
+                    start = summary.find("```") + 3
+                    end = summary.find("```", start)
+                    json_summary = summary[start:end].strip()
+                else:
+                    json_summary = summary
+
+                print(f"✅ LLM要約完了: {len(json_summary)}文字")
+                print(f"📝 LLM要約内容プレビュー: {json_summary[:100]}...")
+                return json_summary
+            else:
+                summary = str(response)
+                print(f"✅ LLM要約完了 (文字列変換): {len(summary)}文字")
+                print(f"📝 LLM要約内容プレビュー: {summary[:100]}...")
+                return summary
+
+        except Exception as e:
+            print(f"❌ LLM要約エラー: {e}")
+            import traceback
+            traceback.print_exc()
+            # フォールバック: 従来の方式で要約を作成
+            retry_count = state.get("completion_retry_count", 0)
+            if is_completed:
+                return "✅ 全てのタスクが正常に完了しました。"
+            else:
+                return f"⚠️ 一部のタスクが完了しませんでした（{retry_count}回再試行後）。"
+
+    def _task_completion_checker_node(self, state: AgentDirectorState) -> AgentDirectorState:
+        """
+        TaskCompletionChecker Node - タスク完了状況をチェックし、必要に応じて再実行
+        未完了タスクがある場合は最大3回まで再試行する
+        """
+        print(f"🔍 TaskCompletionChecker Node: タスク完了状況をチェック中...")
+
+        try:
+            # 初期化
+            if state.get("completion_retry_count") is None:
+                state["completion_retry_count"] = 0
+
+            retry_count = state.get("completion_retry_count", 0)
+            distributed_tasks = state.get("distributed_tasks", {})
+
+            if not distributed_tasks:
+                print("⚠️ 配信されたタスクが見つかりません")
+                state["task_completion_status"] = "failed"
+                state["error_message"] = "配信されたタスクが見つかりません"
+                return state
+
+            # タスク完了状況を分析
+            total_agents = distributed_tasks.get("total_agents", 0)
+            successful_distributions = distributed_tasks.get("successful_distributions", 0)
+            errors = distributed_tasks.get("errors", [])
+            execution_results = distributed_tasks.get("execution_results", {})
+
+            print(f"📊 タスク実行状況: {successful_distributions}/{total_agents} 成功, エラー数: {len(errors)}")
+
+            # 全タスクが成功した場合
+            if successful_distributions == total_agents and len(errors) == 0:
+                print("✅ 全てのタスクが正常に完了しました")
+                state["task_completion_status"] = "completed"
+
+                # LLMを使用して最終結果を要約
+                final_message = self._summarize_task_execution_with_llm(state, is_completed=True)
+                state["messages"].append(AIMessage(content=final_message))
+                return state
+
+            # 一部のタスクが失敗した場合
+            print(f"⚠️ 一部のタスクが未完了です (再試行回数: {retry_count}/3)")
+
+            # 最大再試行回数に達した場合
+            if retry_count >= 3:
+                print("❌ 最大再試行回数に達しました。最終結果を報告します")
+                state["task_completion_status"] = "failed"
+
+                # LLMを使用して最終結果を要約
+                final_message = self._summarize_task_execution_with_llm(state, is_completed=False)
+                state["messages"].append(AIMessage(content=final_message))
+                return state
+
+            # 再試行を実行
+            print(f"🔄 未完了タスクの再実行を開始します (試行 {retry_count + 1}/3)")
+
+            # 失敗したタスクを特定して再グループ化
+            incomplete_tasks = self._identify_incomplete_tasks(state)
+
+            if incomplete_tasks:
+                print(f"📝 再実行対象: {len(incomplete_tasks)}個のエージェントグループ")
+
+                # 再試行カウントを増加
+                state["completion_retry_count"] = retry_count + 1
+                state["incomplete_tasks"] = incomplete_tasks
+
+                # 未完了タスクを再配信
+                original_user_input = state.get("user_input", "")
+                if not original_user_input:
+                    messages = state.get("messages", [])
+                    if messages:
+                        original_user_input = messages[0].content
+
+                retry_distribution_result = self.task_distributor.distribute_tasks(
+                    incomplete_tasks,
+                    original_user_input,
+                    session_id=state.get("session_id", None),
+                    user_id=state.get("user_id", None),
+                    initial_shared_state=state
+                )
+
+                # 結果をマージ
+                self._merge_distribution_results(state, retry_distribution_result)
+
+                # 再帰的に完了チェックを実行
+                return self._task_completion_checker_node(state)
+            else:
+                print("⚠️ 再実行対象のタスクが特定できませんでした")
+                state["task_completion_status"] = "failed"
+                state["error_message"] = "再実行対象のタスクが特定できませんでした"
+                return state
+
+        except Exception as e:
+            print(f"❌ TaskCompletionChecker Node エラー: {e}")
+            state["task_completion_status"] = "failed"
+            state["error_message"] = f"タスク完了チェック中にエラーが発生しました: {str(e)}"
+            return state
+
+    def _identify_incomplete_tasks(self, state: AgentDirectorState) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        未完了タスクを特定して再実行用のタスクグループを作成
+        """
+        try:
+            distributed_tasks = state.get("distributed_tasks", {})
+            grouped_tasks = state.get("grouped_tasks", {})
+
+            distributed_task_info = distributed_tasks.get("distributed_tasks", {})
+            errors = distributed_tasks.get("errors", [])
+
+            incomplete_tasks = {}
+
+            # エラーが発生したエージェントを特定
+            for agent_name, task_group in grouped_tasks.items():
+                # 配信されたタスクに含まれていない、または実行に失敗したエージェント
+                if agent_name not in distributed_task_info or distributed_task_info[agent_name].get("status") != "executed":
+                    incomplete_tasks[agent_name] = task_group
+                    print(f"🔄 再実行対象に追加: {agent_name}")
+
+            return incomplete_tasks
+
+        except Exception as e:
+            print(f"❌ 未完了タスク特定エラー: {e}")
+            return {}
+
+    def _merge_distribution_results(self, state: AgentDirectorState, retry_result: Dict[str, Any]):
+        """
+        再試行結果を既存の配信結果にマージ
+        """
+        try:
+            original_distributed = state.get("distributed_tasks", {})
+
+            # 配信されたタスクをマージ
+            original_distributed_tasks = original_distributed.get("distributed_tasks", {})
+            retry_distributed_tasks = retry_result.get("distributed_tasks", {})
+            original_distributed_tasks.update(retry_distributed_tasks)
+
+            # 実行結果をマージ
+            original_execution_results = original_distributed.get("execution_results", {})
+            retry_execution_results = retry_result.get("execution_results", {})
+            original_execution_results.update(retry_execution_results)
+
+            # エラーをマージ
+            original_errors = original_distributed.get("errors", [])
+            retry_errors = retry_result.get("errors", [])
+            merged_errors = original_errors + retry_errors
+
+            # カウンターを更新
+            original_successful = original_distributed.get("successful_distributions", 0)
+            retry_successful = retry_result.get("successful_distributions", 0)
+
+            original_failed = original_distributed.get("failed_distributions", 0)
+            retry_failed = retry_result.get("failed_distributions", 0)
+
+            # 最終結果を更新
+            if retry_result.get("last_execution_result"):
+                original_distributed["last_execution_result"] = retry_result["last_execution_result"]
+
+            # マージされた結果で更新
+            state["distributed_tasks"] = {
+                "distributed_tasks": original_distributed_tasks,
+                "execution_results": original_execution_results,
+                "errors": merged_errors,
+                "total_agents": original_distributed.get("total_agents", 0),
+                "successful_distributions": len(original_distributed_tasks),
+                "failed_distributions": len(merged_errors),
+                "last_execution_result": original_distributed.get("last_execution_result", {})
+            }
+
+            print(f"🔄 結果マージ完了: 成功 {len(original_distributed_tasks)}, エラー {len(merged_errors)}")
+
+        except Exception as e:
+            print(f"❌ 結果マージエラー: {e}")
+
     def _build_workflow_graph(self):
         """
         AgentDirector専用ワークフローグラフを構築
-        SortedTaskExtractorAndRouter -> TaskGrouper -> TaskDistributor -> Assistant -> Tools -> Assistant のフローを実装
+        SortedTaskExtractorAndRouter -> TaskGrouper -> TaskDistributor -> TaskCompletionChecker -> END のフローを実装
         """
         # 状態グラフを定義
         state_class = self.get_state_class()
@@ -330,6 +670,7 @@ class AgentDirector(BaseAgent):
         builder.add_node("sorted_task_extractor_router", self._sorted_task_extractor_router_node)
         builder.add_node("task_grouper", self._task_grouper_node)
         builder.add_node("task_distributor", self._task_distributor_node)
+        builder.add_node("task_completion_checker", self._task_completion_checker_node)
         # builder.add_node("assistant", self._assistant_node)
         # builder.add_node("tools", self._custom_tool_node)
 
@@ -337,7 +678,8 @@ class AgentDirector(BaseAgent):
         builder.add_edge(START, "sorted_task_extractor_router")
         builder.add_edge("sorted_task_extractor_router", "task_grouper")
         builder.add_edge("task_grouper", "task_distributor")
-        builder.add_edge("task_distributor", END)
+        builder.add_edge("task_distributor", "task_completion_checker")
+        builder.add_edge("task_completion_checker", END)
         # builder.add_conditional_edges(
         #     "assistant",
         #     tools_condition,
@@ -365,6 +707,16 @@ class AgentDirector(BaseAgent):
 
         if final_state.get("task_planning_info"):
             response_data["task_planning_info"] = final_state["task_planning_info"]
+
+        # タスク完了チェック情報を追加
+        if final_state.get("completion_retry_count") is not None:
+            response_data["completion_retry_count"] = final_state["completion_retry_count"]
+
+        if final_state.get("task_completion_status"):
+            response_data["task_completion_status"] = final_state["task_completion_status"]
+
+        if final_state.get("incomplete_tasks"):
+            response_data["incomplete_tasks"] = final_state["incomplete_tasks"]
 
         return response_data
 

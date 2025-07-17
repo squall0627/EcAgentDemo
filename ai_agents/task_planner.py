@@ -634,7 +634,7 @@ class TaskDistributor:
                     context_parts.append(f"- {agent}: {str(result)}")
 
             if context_parts:
-                context_info = "前のタスクの実行結果:\n" + "\n".join(context_parts) + "\n\n"
+                context_info = "The result of the previous task:\n" + "\n".join(context_parts) + "\n\n"
 
         if len(commands) == 1:
             cmd = commands[0]
@@ -643,7 +643,7 @@ class TaskDistributor:
 
             command_text = f"{action}: {condition}"
             if context_info:
-                command_text = context_info + "上記の結果を踏まえて、以下のタスクを実行してください:\n" + command_text
+                command_text = context_info + "Based on the above results, please proceed with the following task:\n" + command_text
 
             return command_text
 

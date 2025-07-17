@@ -645,6 +645,84 @@ class BaseAgent(ABC):
                 return error_state
 
         return _execute_workflow()
+        
+    async def process_command_async(self, command: str, user_input: str = None, llm_type: str = None, session_id: str = None, user_id: str = None, is_entry_agent: bool = False, shared_state: BaseAgentState = None, timeout: float = 120.0) -> BaseAgentState:
+        """
+        ユーザーコマンドを非同期で処理 - 非同期インターフェース（デッドロック防止）
+        
+        Args:
+            command: ユーザーコマンド
+            user_input: ユーザーのオリジナル入力内容（省略時はコマンドを使用）
+            llm_type: LLMタイプ（省略時は現在のLLMを使用）
+            session_id: セッションID
+            user_id: ユーザーID
+            is_entry_agent: エントリーエージェントかどうか（初期状態の設定に影響）
+            shared_state: 上流Agentから渡された共有状態（下流Agentの場合に使用）
+            timeout: タイムアウト時間（秒）
+            
+        Returns:
+            BaseAgentState: エージェント実行結果の状態オブジェクト（多層Agent間での状態共有用）
+        """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # 同期処理関数を定義
+        def process_command_sync():
+            return self.process_command(
+                command=command,
+                user_input=user_input,
+                llm_type=llm_type,
+                session_id=session_id,
+                user_id=user_id,
+                is_entry_agent=is_entry_agent,
+                shared_state=shared_state
+            )
+        
+        # ThreadPoolExecutorを使用して同期処理を非同期で実行
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            try:
+                # 指定されたタイムアウトで実行
+                return await asyncio.wait_for(
+                    loop.run_in_executor(executor, process_command_sync),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                # タイムアウト時のエラー状態を構築
+                error_msg = f"エージェント処理がタイムアウトしました ({timeout}秒)"
+                print(f"⏰ {error_msg}")
+                
+                # エラー時のBaseAgentState構築
+                error_state = self.get_state_class()({
+                    "messages": [],
+                    "user_input": user_input or command,
+                    "html_content": None,
+                    "error_message": error_msg,
+                    "next_actions": None,
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "agent_type": self.agent_name,
+                    "agent_manager_id": self.agent_manager_id,
+                    "conversation_context": None,
+                    "trace_id": None,
+                    "conversation_id": None,
+                    "is_entry_agent": is_entry_agent,
+                    "llm_type_used": self.llm_type,
+                    "llm_info": self.get_llm_info(),
+                    "agent_name": self.agent_name,
+                    "response_message": error_msg,
+                    "response_data": {
+                        "message": error_msg,
+                        "error": "Timeout",
+                        "llm_type_used": self.llm_type,
+                        "llm_info": self.get_llm_info(),
+                        "agent_type": self.agent_name,
+                        "agent_manager_id": self.agent_manager_id,
+                        "trace_id": None
+                    }
+                })
+                
+                return error_state
 
     def generate_tool_descriptions(self) -> str:
         """Generate dynamic tool descriptions from bound tools"""
